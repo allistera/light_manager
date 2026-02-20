@@ -18,7 +18,8 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
 
 async def async_register_frontend_panel(hass: HomeAssistant) -> None:
     """Register the Light Manager frontend panel."""
-    hass.components.frontend.async_register_built_in_panel(
+    async_register_built_in_panel(
+        hass,
         component_name="custom",
         sidebar_title="Light Manager",
         sidebar_icon="mdi:lightbulb-multiple",
