@@ -1,0 +1,10 @@
+{
+  "config": {
+    "title": "Light Manager"
+  },
+  "system_health": {
+    "info": {
+      "component_version": "Version"
+    }
+  }
+}

@@ -1,0 +1,12 @@
+{
+  "domain": "light_manager",
+  "name": "Light Manager",
+  "version": "1.0.0",
+  "documentation": "https://github.com/YOUR_USERNAME/light-manager",
+  "issue_tracker": "https://github.com/YOUR_USERNAME/light-manager/issues",
+  "codeowners": ["@YOUR_USERNAME"],
+  "dependencies": ["frontend"],
+  "requirements": [],
+  "iot_class": "calculated",
+  "integration_type": "system"
+}
