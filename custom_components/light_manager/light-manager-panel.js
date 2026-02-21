@@ -369,26 +369,7 @@ class LightManagerPanel extends LitElement {
       let groups = await this.hass.connection.sendMessagePromise({
         type: "light_manager/get_groups",
       });
-      groups = Array.isArray(groups) ? groups : [];
-
-      // Migrate any groups previously stored in localStorage
-      if (groups.length === 0) {
-        const legacy = localStorage.getItem("light_manager_groups");
-        if (legacy) {
-          try {
-            groups = JSON.parse(legacy);
-            await this.hass.connection.sendMessagePromise({
-              type: "light_manager/save_groups",
-              groups,
-            });
-            localStorage.removeItem("light_manager_groups");
-          } catch {
-            groups = [];
-          }
-        }
-      }
-
-      this._groups = groups;
+      this._groups = Array.isArray(groups) ? groups : [];
       this._groupsLoaded = true;
     } catch (err) {
       console.error("Light Manager: failed to load groups from HA", err);
