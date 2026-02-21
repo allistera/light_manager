@@ -1,20 +1,5 @@
 import { LitElement, html, css } from "https://unpkg.com/lit@3?module";
 
-const STORAGE_KEY = "light_manager_groups";
-
-function loadGroups() {
-  try {
-    const data = localStorage.getItem(STORAGE_KEY);
-    return data ? JSON.parse(data) : [];
-  } catch {
-    return [];
-  }
-}
-
-function saveGroups(groups) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(groups));
-}
-
 class LightManagerPanel extends LitElement {
   static properties = {
     hass: { type: Object },
@@ -29,18 +14,21 @@ class LightManagerPanel extends LitElement {
     _addingLightToGroup: { state: true },
     _editingGroupId: { state: true },
     _editingGroupName: { state: true },
+    _pickerValue: { state: true },
   };
 
   constructor() {
     super();
     this._lights = [];
-    this._groups = loadGroups();
+    this._groups = [];
+    this._groupsLoaded = false;
     this._activeTab = "lights";
     this._newGroupName = "";
     this._showCreateGroup = false;
     this._addingLightToGroup = null;
     this._editingGroupId = null;
     this._editingGroupName = "";
+    this._pickerValue = "";
   }
 
   static styles = css`
@@ -228,8 +216,7 @@ class LightManagerPanel extends LitElement {
       margin-bottom: 16px;
     }
 
-    input[type="text"],
-    select {
+    input[type="text"] {
       padding: 8px 12px;
       border: 1px solid var(--divider-color);
       border-radius: 4px;
@@ -240,8 +227,7 @@ class LightManagerPanel extends LitElement {
       min-width: 0;
     }
 
-    input[type="text"]:focus,
-    select:focus {
+    input[type="text"]:focus {
       outline: none;
       border-color: var(--primary-color);
     }
@@ -346,12 +332,19 @@ class LightManagerPanel extends LitElement {
       background: var(--error-color, #db4437);
       color: white;
     }
+
+    ha-entity-picker {
+      flex: 1;
+    }
   `;
 
   updated(changedProps) {
     super.updated(changedProps);
     if (changedProps.has("hass")) {
       this._updateLights();
+      if (this.hass && !this._groupsLoaded) {
+        this._loadGroupsFromHA();
+      }
     }
   }
 
@@ -370,8 +363,29 @@ class LightManagerPanel extends LitElement {
     this._lights = lights;
   }
 
-  _saveGroups() {
-    saveGroups(this._groups);
+  async _loadGroupsFromHA() {
+    if (!this.hass || this._groupsLoaded) return;
+    try {
+      let groups = await this.hass.connection.sendMessagePromise({
+        type: "light_manager/get_groups",
+      });
+      this._groups = Array.isArray(groups) ? groups : [];
+      this._groupsLoaded = true;
+    } catch (err) {
+      console.error("Light Manager: failed to load groups from HA", err);
+      this._groups = [];
+      this._groupsLoaded = true;
+    }
+  }
+
+  _saveGroupsToHA() {
+    if (!this.hass) return;
+    this.hass.connection.sendMessagePromise({
+      type: "light_manager/save_groups",
+      groups: this._groups,
+    }).catch(err => {
+      console.error("Light Manager: failed to save groups to HA", err);
+    });
   }
 
   _createGroup() {
@@ -383,14 +397,14 @@ class LightManagerPanel extends LitElement {
       lightIds: [],
     };
     this._groups = [...this._groups, newGroup];
-    this._saveGroups();
+    this._saveGroupsToHA();
     this._newGroupName = "";
     this._showCreateGroup = false;
   }
 
   _deleteGroup(groupId) {
     this._groups = this._groups.filter(g => g.id !== groupId);
-    this._saveGroups();
+    this._saveGroupsToHA();
   }
 
   _addLightToGroup(groupId, entityId) {
@@ -400,8 +414,8 @@ class LightManagerPanel extends LitElement {
         ? { ...g, lightIds: [...g.lightIds, entityId] }
         : g
     );
-    this._saveGroups();
-    this._addingLightToGroup = null;
+    this._saveGroupsToHA();
+    this._pickerValue = "";
   }
 
   _removeLightFromGroup(groupId, entityId) {
@@ -410,7 +424,7 @@ class LightManagerPanel extends LitElement {
         ? { ...g, lightIds: g.lightIds.filter(id => id !== entityId) }
         : g
     );
-    this._saveGroups();
+    this._saveGroupsToHA();
   }
 
   _startEditGroup(group) {
@@ -424,7 +438,7 @@ class LightManagerPanel extends LitElement {
     this._groups = this._groups.map(g =>
       g.id === groupId ? { ...g, name } : g
     );
-    this._saveGroups();
+    this._saveGroupsToHA();
     this._editingGroupId = null;
   }
 
@@ -592,18 +606,20 @@ class LightManagerPanel extends LitElement {
         <div class="group-footer">
           ${isAddingLight
             ? html`
-                <select
-                  @change=${e => { this._addLightToGroup(group.id, e.target.value); e.target.value = ""; }}
-                >
-                  <option value="">-- Select a light to add --</option>
-                  ${availableLights.map(
-                    l => html`<option value=${l.entityId}>${l.name}</option>`
-                  )}
-                </select>
+                <ha-entity-picker
+                  .hass=${this.hass}
+                  .value=${this._pickerValue}
+                  .includeDomains=${["light"]}
+                  .excludeEntities=${group.lightIds}
+                  label="Search for a light..."
+                  @value-changed=${e => {
+                    if (e.detail.value) this._addLightToGroup(group.id, e.detail.value);
+                  }}
+                ></ha-entity-picker>
                 <button
                   class="btn-secondary"
-                  @click=${() => { this._addingLightToGroup = null; }}
-                >Cancel</button>
+                  @click=${() => { this._addingLightToGroup = null; this._pickerValue = ""; }}
+                >Done</button>
               `
             : html`
                 <button
