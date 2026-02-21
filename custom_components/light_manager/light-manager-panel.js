@@ -318,8 +318,14 @@ class LightManagerPanel extends LitElement {
       color: white;
     }
 
-    ha-entity-picker {
+    .add-light-select {
       flex: 1;
+      padding: 6px 8px;
+      border-radius: 4px;
+      border: 1px solid var(--divider-color);
+      background: var(--card-background-color);
+      color: var(--primary-text-color);
+      font-size: 0.95em;
     }
   `;
 
@@ -650,19 +656,23 @@ class LightManagerPanel extends LitElement {
         <div class="group-footer">
           ${isAddingLight
             ? html`
-                <ha-entity-picker
-                  .hass=${this.hass}
-                  .value=${this._pickerValue}
-                  .includeDomains=${["light"]}
-                  .excludeEntities=${group.lightIds}
-                  label="Search for a light..."
-                  @value-changed=${e => {
-                    if (e.detail.value) this._addLightToGroup(group.id, e.detail.value);
+                <select
+                  class="add-light-select"
+                  @change=${e => {
+                    if (e.target.value) {
+                      this._addLightToGroup(group.id, e.target.value);
+                      e.target.value = "";
+                    }
                   }}
-                ></ha-entity-picker>
+                >
+                  <option value="">Select a light to add...</option>
+                  ${availableLights.map(light => html`
+                    <option value="${light.entityId}">${light.name}</option>
+                  `)}
+                </select>
                 <button
                   class="btn-secondary"
-                  @click=${() => { this._addingLightToGroup = null; this._pickerValue = ""; }}
+                  @click=${() => { this._addingLightToGroup = null; }}
                 >Done</button>
               `
             : html`
