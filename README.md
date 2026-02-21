@@ -46,6 +46,8 @@ After installation and restart, "Light Manager" will appear in the sidebar with 
 
 ## Development
 
+> **Local setup guide**: See [docs/local-development.md](docs/local-development.md) for step-by-step instructions on running Home Assistant locally for faster iteration — including symlinking the component, reloading without restarts, and adding demo lights.
+
 This component uses:
 
 - **Backend**: Python for Home Assistant integration
