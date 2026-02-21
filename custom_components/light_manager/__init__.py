@@ -13,6 +13,7 @@ from homeassistant.helpers.storage import Store
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "light_manager"
 STORAGE_KEY = f"{DOMAIN}_groups"
+SCENES_STORAGE_KEY = f"{DOMAIN}_scenes"
 STORAGE_VERSION = 1
 
 
@@ -20,6 +21,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     """Set up the Light Manager component."""
     hass.data.setdefault(DOMAIN, {})
     hass.data[DOMAIN]["store"] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
+    hass.data[DOMAIN]["scenes_store"] = Store(hass, STORAGE_VERSION, SCENES_STORAGE_KEY)
     await async_register_frontend_resources(hass)
     await async_register_frontend_panel(hass)
     _register_websocket_handlers(hass)
@@ -48,7 +50,7 @@ async def async_register_frontend_panel(hass: HomeAssistant) -> None:
         config={
             "_panel_custom": {
                 "name": "light-manager-panel",
-                "module_url": "/light_manager_static/light-manager-panel.js?v=3",
+                "module_url": "/light_manager_static/light-manager-panel.js?v=4",
             }
         },
         require_admin=False,
@@ -59,6 +61,8 @@ def _register_websocket_handlers(hass: HomeAssistant) -> None:
     """Register WebSocket command handlers."""
     websocket_api.async_register_command(hass, ws_get_groups)
     websocket_api.async_register_command(hass, ws_save_groups)
+    websocket_api.async_register_command(hass, ws_get_scenes)
+    websocket_api.async_register_command(hass, ws_save_scenes)
 
 
 @websocket_api.websocket_command({
@@ -89,4 +93,35 @@ async def ws_save_groups(
     """Persist the groups to HA storage."""
     store: Store = hass.data[DOMAIN]["store"]
     await store.async_save(msg["groups"])
+    connection.send_result(msg["id"], {"success": True})
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "light_manager/get_scenes",
+})
+@websocket_api.async_response
+async def ws_get_scenes(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Return the stored scenes."""
+    store: Store = hass.data[DOMAIN]["scenes_store"]
+    data = await store.async_load()
+    connection.send_result(msg["id"], data if isinstance(data, list) else [])
+
+
+@websocket_api.websocket_command({
+    vol.Required("type"): "light_manager/save_scenes",
+    vol.Required("scenes"): list,
+})
+@websocket_api.async_response
+async def ws_save_scenes(
+    hass: HomeAssistant,
+    connection: websocket_api.ActiveConnection,
+    msg: dict,
+) -> None:
+    """Persist the scenes to HA storage."""
+    store: Store = hass.data[DOMAIN]["scenes_store"]
+    await store.async_save(msg["scenes"])
     connection.send_result(msg["id"], {"success": True})
