@@ -8,6 +8,7 @@ class LightManagerPanel extends LitElement {
     panel: { type: Object },
     _lights: { state: true },
     _groups: { state: true },
+    _scenes: { state: true },
     _activeTab: { state: true },
     _newGroupName: { state: true },
     _showCreateGroup: { state: true },
@@ -15,20 +16,32 @@ class LightManagerPanel extends LitElement {
     _editingGroupId: { state: true },
     _editingGroupName: { state: true },
     _pickerValue: { state: true },
+    _newSceneName: { state: true },
+    _showCreateScene: { state: true },
+    _addingGroupToScene: { state: true },
+    _editingSceneId: { state: true },
+    _editingSceneName: { state: true },
   };
 
   constructor() {
     super();
     this._lights = [];
     this._groups = [];
+    this._scenes = [];
     this._groupsLoaded = false;
-    this._activeTab = "lights";
+    this._scenesLoaded = false;
+    this._activeTab = "groups";
     this._newGroupName = "";
     this._showCreateGroup = false;
     this._addingLightToGroup = null;
     this._editingGroupId = null;
     this._editingGroupName = "";
     this._pickerValue = "";
+    this._newSceneName = "";
+    this._showCreateScene = false;
+    this._addingGroupToScene = null;
+    this._editingSceneId = null;
+    this._editingSceneName = "";
   }
 
   static styles = css`
@@ -76,51 +89,6 @@ class LightManagerPanel extends LitElement {
       border-bottom-color: var(--primary-color);
     }
 
-    /* Lights table */
-    .light-table {
-      width: 100%;
-      max-width: 1200px;
-      border-collapse: collapse;
-      background: var(--card-background-color);
-      border-radius: 8px;
-      overflow: hidden;
-      box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
-    }
-
-    .light-table th,
-    .light-table td {
-      text-align: left;
-      padding: 12px 16px;
-      border-bottom: 1px solid var(--divider-color);
-    }
-
-    .light-table tbody tr:last-child td {
-      border-bottom: none;
-    }
-
-    .light-table th {
-      background: var(--table-header-background-color, var(--secondary-background-color));
-      font-weight: 500;
-      text-transform: uppercase;
-      font-size: 0.85em;
-      color: var(--secondary-text-color);
-    }
-
-    .light-table td {
-      color: var(--primary-text-color);
-    }
-
-    .state-on {
-      color: var(--state-icon-active-color, var(--success-color));
-      font-weight: 500;
-      text-transform: capitalize;
-    }
-
-    .state-off {
-      color: var(--secondary-text-color);
-      text-transform: capitalize;
-    }
-
     /* Empty state */
     .empty-state {
       text-align: center;
@@ -137,7 +105,7 @@ class LightManagerPanel extends LitElement {
       opacity: 0.3;
     }
 
-    /* Groups toolbar */
+    /* Groups/Scenes toolbar */
     .groups-toolbar {
       display: flex;
       justify-content: flex-end;
@@ -204,7 +172,7 @@ class LightManagerPanel extends LitElement {
       color: white;
     }
 
-    /* Create group form */
+    /* Create form */
     .create-group-form {
       display: flex;
       gap: 8px;
@@ -232,7 +200,24 @@ class LightManagerPanel extends LitElement {
       border-color: var(--primary-color);
     }
 
-    /* Group cards */
+    select {
+      padding: 8px 12px;
+      border: 1px solid var(--divider-color);
+      border-radius: 4px;
+      background: var(--primary-background-color);
+      color: var(--primary-text-color);
+      font-size: 0.95em;
+      flex: 1;
+      min-width: 0;
+      cursor: pointer;
+    }
+
+    select:focus {
+      outline: none;
+      border-color: var(--primary-color);
+    }
+
+    /* Group/Scene cards */
     .groups-list {
       display: flex;
       flex-direction: column;
@@ -345,6 +330,9 @@ class LightManagerPanel extends LitElement {
       if (this.hass && !this._groupsLoaded) {
         this._loadGroupsFromHA();
       }
+      if (this.hass && !this._scenesLoaded) {
+        this._loadScenesFromHA();
+      }
     }
   }
 
@@ -362,6 +350,8 @@ class LightManagerPanel extends LitElement {
 
     this._lights = lights;
   }
+
+  // ── Groups ──────────────────────────────────────────────────────────────
 
   async _loadGroupsFromHA() {
     if (!this.hass || this._groupsLoaded) return;
@@ -447,53 +437,107 @@ class LightManagerPanel extends LitElement {
     this._editingGroupName = "";
   }
 
+  // ── Scenes ──────────────────────────────────────────────────────────────
+
+  async _loadScenesFromHA() {
+    if (!this.hass || this._scenesLoaded) return;
+    try {
+      let scenes = await this.hass.connection.sendMessagePromise({
+        type: "light_manager/get_scenes",
+      });
+      this._scenes = Array.isArray(scenes) ? scenes : [];
+      this._scenesLoaded = true;
+    } catch (err) {
+      console.error("Light Manager: failed to load scenes from HA", err);
+      this._scenes = [];
+      this._scenesLoaded = true;
+    }
+  }
+
+  _saveScenesToHA() {
+    if (!this.hass) return;
+    this.hass.connection.sendMessagePromise({
+      type: "light_manager/save_scenes",
+      scenes: this._scenes,
+    }).catch(err => {
+      console.error("Light Manager: failed to save scenes to HA", err);
+    });
+  }
+
+  _createScene() {
+    const name = this._newSceneName.trim();
+    if (!name) return;
+    const newScene = {
+      id: Date.now().toString(),
+      name,
+      groupIds: [],
+    };
+    this._scenes = [...this._scenes, newScene];
+    this._saveScenesToHA();
+    this._newSceneName = "";
+    this._showCreateScene = false;
+  }
+
+  _deleteScene(sceneId) {
+    this._scenes = this._scenes.filter(s => s.id !== sceneId);
+    this._saveScenesToHA();
+  }
+
+  _addGroupToScene(sceneId, groupId) {
+    if (!groupId) return;
+    this._scenes = this._scenes.map(s =>
+      s.id === sceneId && !s.groupIds.includes(groupId)
+        ? { ...s, groupIds: [...s.groupIds, groupId] }
+        : s
+    );
+    this._saveScenesToHA();
+  }
+
+  _removeGroupFromScene(sceneId, groupId) {
+    this._scenes = this._scenes.map(s =>
+      s.id === sceneId
+        ? { ...s, groupIds: s.groupIds.filter(id => id !== groupId) }
+        : s
+    );
+    this._saveScenesToHA();
+  }
+
+  _startEditScene(scene) {
+    this._editingSceneId = scene.id;
+    this._editingSceneName = scene.name;
+  }
+
+  _saveEditScene(sceneId) {
+    const name = this._editingSceneName.trim();
+    if (!name) return;
+    this._scenes = this._scenes.map(s =>
+      s.id === sceneId ? { ...s, name } : s
+    );
+    this._saveScenesToHA();
+    this._editingSceneId = null;
+  }
+
+  _cancelEditScene() {
+    this._editingSceneId = null;
+    this._editingSceneName = "";
+  }
+
+  // ── Render ──────────────────────────────────────────────────────────────
+
   render() {
     return html`
       <div class="header">Light Manager</div>
       <div class="tabs">
         <button
-          class="tab ${this._activeTab === "lights" ? "active" : ""}"
-          @click=${() => { this._activeTab = "lights"; }}
-        >All Lights</button>
-        <button
           class="tab ${this._activeTab === "groups" ? "active" : ""}"
           @click=${() => { this._activeTab = "groups"; }}
         >Groups (${this._groups.length})</button>
+        <button
+          class="tab ${this._activeTab === "scenes" ? "active" : ""}"
+          @click=${() => { this._activeTab = "scenes"; }}
+        >Scenes (${this._scenes.length})</button>
       </div>
-      ${this._activeTab === "lights" ? this._renderAllLights() : this._renderGroups()}
-    `;
-  }
-
-  _renderAllLights() {
-    const onLights = this._lights.filter(l => l.state === "on");
-    return html`
-      ${onLights.length > 0
-        ? html`
-            <table class="light-table">
-              <thead>
-                <tr>
-                  <th>Light Name</th>
-                  <th>State</th>
-                </tr>
-              </thead>
-              <tbody>
-                ${onLights.map(
-                  light => html`
-                    <tr>
-                      <td>${light.name}</td>
-                      <td class="state-on">${light.state}</td>
-                    </tr>
-                  `
-                )}
-              </tbody>
-            </table>
-          `
-        : html`
-            <div class="empty-state">
-              <div class="empty-state-icon">💡</div>
-              <div>No lights are currently on</div>
-            </div>
-          `}
+      ${this._activeTab === "groups" ? this._renderGroups() : this._renderScenes()}
     `;
   }
 
@@ -629,6 +673,146 @@ class LightManagerPanel extends LitElement {
                 >+ Add Light</button>
                 ${availableLights.length === 0
                   ? html`<span style="font-size:0.85em;color:var(--secondary-text-color)">All lights are already in this group.</span>`
+                  : ""}
+              `}
+        </div>
+      </div>
+    `;
+  }
+
+  _renderScenes() {
+    return html`
+      <div class="groups-toolbar">
+        <button
+          class="btn-primary"
+          @click=${() => { this._showCreateScene = !this._showCreateScene; this._newSceneName = ""; }}
+        >+ Create Scene</button>
+      </div>
+
+      ${this._showCreateScene ? this._renderCreateSceneForm() : ""}
+
+      ${this._scenes.length === 0 && !this._showCreateScene
+        ? html`
+            <div class="empty-state">
+              <div class="empty-state-icon">🎬</div>
+              <div>No scenes yet. Create one to organise your groups.</div>
+            </div>
+          `
+        : html`
+            <div class="groups-list">
+              ${this._scenes.map(scene => this._renderScene(scene))}
+            </div>
+          `}
+    `;
+  }
+
+  _renderCreateSceneForm() {
+    return html`
+      <div class="create-group-form">
+        <input
+          type="text"
+          placeholder="Scene name"
+          .value=${this._newSceneName}
+          @input=${e => { this._newSceneName = e.target.value; }}
+          @keydown=${e => { if (e.key === "Enter") this._createScene(); }}
+        />
+        <button class="btn-primary" @click=${this._createScene}>Create</button>
+        <button
+          class="btn-secondary"
+          @click=${() => { this._showCreateScene = false; this._newSceneName = ""; }}
+        >Cancel</button>
+      </div>
+    `;
+  }
+
+  _renderScene(scene) {
+    const sceneGroups = scene.groupIds
+      .map(id => this._groups.find(g => g.id === id))
+      .filter(Boolean);
+
+    const isEditing = this._editingSceneId === scene.id;
+    const isAddingGroup = this._addingGroupToScene === scene.id;
+    const availableGroups = this._groups.filter(g => !scene.groupIds.includes(g.id));
+
+    return html`
+      <div class="group-card">
+        <div class="group-card-header">
+          ${isEditing
+            ? html`
+                <input
+                  class="edit-input"
+                  type="text"
+                  .value=${this._editingSceneName}
+                  @input=${e => { this._editingSceneName = e.target.value; }}
+                  @keydown=${e => { if (e.key === "Enter") this._saveEditScene(scene.id); }}
+                />
+                <button class="btn-primary" @click=${() => this._saveEditScene(scene.id)}>Save</button>
+                <button class="btn-secondary" @click=${this._cancelEditScene}>Cancel</button>
+              `
+            : html`
+                <span class="group-name">${scene.name}</span>
+                <div class="group-actions">
+                  <button
+                    class="btn-icon"
+                    title="Rename scene"
+                    @click=${() => this._startEditScene(scene)}
+                  >✏️</button>
+                  <button
+                    class="btn-icon danger"
+                    title="Delete scene"
+                    @click=${() => this._deleteScene(scene.id)}
+                  >🗑️</button>
+                </div>
+              `}
+        </div>
+
+        <div class="group-lights">
+          ${sceneGroups.length === 0
+            ? html`<div class="no-lights-msg">No groups in this scene yet.</div>`
+            : sceneGroups.map(
+                group => html`
+                  <div class="group-light-row">
+                    <span class="light-name">${group.name}</span>
+                    <span style="font-size:0.85em;color:var(--secondary-text-color)">
+                      ${group.lightIds.length} ${group.lightIds.length === 1 ? "light" : "lights"}
+                    </span>
+                    <button
+                      class="remove-btn"
+                      title="Remove from scene"
+                      @click=${() => this._removeGroupFromScene(scene.id, group.id)}
+                    >&times;</button>
+                  </div>
+                `
+              )}
+        </div>
+
+        <div class="group-footer">
+          ${isAddingGroup
+            ? html`
+                <select
+                  @change=${e => {
+                    if (e.target.value) {
+                      this._addGroupToScene(scene.id, e.target.value);
+                      e.target.value = "";
+                    }
+                  }}
+                >
+                  <option value="">Select a group...</option>
+                  ${availableGroups.map(g => html`<option value="${g.id}">${g.name}</option>`)}
+                </select>
+                <button
+                  class="btn-secondary"
+                  @click=${() => { this._addingGroupToScene = null; }}
+                >Done</button>
+              `
+            : html`
+                <button
+                  class="btn-secondary"
+                  ?disabled=${availableGroups.length === 0}
+                  @click=${() => { this._addingGroupToScene = scene.id; }}
+                >+ Add Group</button>
+                ${availableGroups.length === 0
+                  ? html`<span style="font-size:0.85em;color:var(--secondary-text-color)">All groups are already in this scene.</span>`
                   : ""}
               `}
         </div>
