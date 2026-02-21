@@ -5,6 +5,7 @@ import logging
 import os
 from homeassistant.core import HomeAssistant
 from homeassistant.components.frontend import async_register_built_in_panel
+from homeassistant.components.http import StaticPathConfig
 
 _LOGGER = logging.getLogger(__name__)
 DOMAIN = "light_manager"
@@ -22,11 +23,9 @@ async def async_register_frontend_resources(hass: HomeAssistant) -> None:
     """Register frontend resources."""
     # Register static path for the JavaScript file
     integration_dir = os.path.dirname(__file__)
-    hass.http.register_static_path(
-        f"/light_manager_static",
-        integration_dir,
-        cache_headers=False,
-    )
+    await hass.http.async_register_static_paths([
+        StaticPathConfig("/light_manager_static", integration_dir, cache_headers=False),
+    ])
     _LOGGER.info("Registered static path for Light Manager frontend resources")
 
 
