@@ -50,7 +50,7 @@ async def async_register_frontend_panel(hass: HomeAssistant) -> None:
         config={
             "_panel_custom": {
                 "name": "light-manager-panel",
-                "module_url": "/light_manager_static/light-manager-panel.js?v=4",
+                "module_url": "/light_manager_static/light-manager-panel.js?v=5",
             }
         },
         require_admin=False,
