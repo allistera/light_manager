@@ -22,6 +22,7 @@ class LightManagerPanel extends LitElement {
     _editingSceneId: { state: true },
     _editingSceneName: { state: true },
     _activatingSceneId: { state: true },
+    _editingAnimationSceneId: { state: true },
   };
 
   constructor() {
@@ -44,6 +45,7 @@ class LightManagerPanel extends LitElement {
     this._editingSceneId = null;
     this._editingSceneName = "";
     this._activatingSceneId = null;
+    this._editingAnimationSceneId = null;
   }
 
   static styles = css`
@@ -378,6 +380,45 @@ class LightManagerPanel extends LitElement {
       color: var(--warning-color, #ff9800);
       font-style: italic;
     }
+
+    .animation-editor {
+      padding: 12px 16px;
+      border-top: 1px solid var(--divider-color);
+      background: var(--primary-background-color);
+    }
+
+    .animation-editor-title {
+      font-size: 0.9em;
+      font-weight: 600;
+      margin-bottom: 8px;
+      color: var(--primary-text-color);
+    }
+
+    .animation-row {
+      display: grid;
+      grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) 100px;
+      gap: 8px;
+      align-items: center;
+      margin-bottom: 8px;
+    }
+
+    .animation-row:last-child {
+      margin-bottom: 0;
+    }
+
+    .animation-light-name {
+      font-size: 0.9em;
+      color: var(--primary-text-color);
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+
+    .animation-empty {
+      font-size: 0.85em;
+      color: var(--secondary-text-color);
+      font-style: italic;
+    }
   `;
 
   updated(changedProps) {
@@ -605,9 +646,63 @@ class LightManagerPanel extends LitElement {
       lightStates[entityId] = captured;
     });
 
-    this._scenes = this._scenes.map(s =>
-      s.id === sceneId ? { ...s, lightStates } : s
-    );
+    this._scenes = this._scenes.map(s => {
+      if (s.id !== sceneId) return s;
+      const existingAnimations = s.lightAnimations || {};
+      const syncedAnimations = {};
+      Object.keys(lightStates).forEach(entityId => {
+        if (existingAnimations[entityId]) {
+          syncedAnimations[entityId] = existingAnimations[entityId];
+        }
+      });
+      return { ...s, lightStates, lightAnimations: syncedAnimations };
+    });
+    this._saveScenesToHA();
+  }
+
+  _getSceneLightIds(scene) {
+    const sceneLightIds = new Set();
+    scene.groupIds.forEach(groupId => {
+      const group = this._groups.find(g => g.id === groupId);
+      if (group) {
+        group.lightIds.forEach(lightId => sceneLightIds.add(lightId));
+      }
+    });
+    return [...sceneLightIds];
+  }
+
+  _getLightAnimationOptions(entityId) {
+    const entityState = this.hass?.states?.[entityId];
+    const effectList = entityState?.attributes?.effect_list;
+    return Array.isArray(effectList) ? effectList : [];
+  }
+
+  _updateLightAnimation(sceneId, entityId, field, value) {
+    this._scenes = this._scenes.map(scene => {
+      if (scene.id !== sceneId) return scene;
+      const currentAnimations = scene.lightAnimations || {};
+      const currentAnimation = currentAnimations[entityId] || {};
+      const nextAnimation = { ...currentAnimation, [field]: value };
+
+      const transitionValue = Number(nextAnimation.transition);
+      if (nextAnimation.transition == null || nextAnimation.transition === "" || !Number.isFinite(transitionValue) || transitionValue <= 0) {
+        delete nextAnimation.transition;
+      } else {
+        nextAnimation.transition = transitionValue;
+      }
+
+      if (!nextAnimation.effect) {
+        delete nextAnimation.effect;
+      }
+
+      const nextAnimations = { ...currentAnimations };
+      if (Object.keys(nextAnimation).length === 0) {
+        delete nextAnimations[entityId];
+      } else {
+        nextAnimations[entityId] = nextAnimation;
+      }
+      return { ...scene, lightAnimations: nextAnimations };
+    });
     this._saveScenesToHA();
   }
 
@@ -627,6 +722,9 @@ class LightManagerPanel extends LitElement {
           if (lightState.brightness != null) serviceData.brightness = lightState.brightness;
           if (lightState.color_temp != null) serviceData.color_temp = lightState.color_temp;
           if (lightState.hs_color != null) serviceData.hs_color = lightState.hs_color;
+          const animation = scene.lightAnimations?.[entityId];
+          if (animation?.effect) serviceData.effect = animation.effect;
+          if (animation?.transition != null) serviceData.transition = animation.transition;
           return this.hass.callService("light", "turn_on", serviceData);
         })
       );
@@ -762,6 +860,7 @@ class LightManagerPanel extends LitElement {
               )}
         </div>
 
+
         <div class="group-footer">
           ${isAddingLight
             ? html`
@@ -854,7 +953,10 @@ class LightManagerPanel extends LitElement {
     const availableGroups = this._groups.filter(g => !scene.groupIds.includes(g.id));
     const isActivating = this._activatingSceneId === scene.id;
     const lightStates = scene.lightStates || {};
+    const lightAnimations = scene.lightAnimations || {};
     const hasStates = Object.keys(lightStates).length > 0;
+    const isEditingAnimations = this._editingAnimationSceneId === scene.id;
+    const sceneLightIds = this._getSceneLightIds(scene);
 
     return html`
       <div class="group-card">
@@ -885,6 +987,13 @@ class LightManagerPanel extends LitElement {
                     @click=${() => this._startEditScene(scene)}
                   >✏️</button>
                   <button
+                    class="btn-icon"
+                    title="Configure animation effects"
+                    @click=${() => {
+                      this._editingAnimationSceneId = isEditingAnimations ? null : scene.id;
+                    }}
+                  >✨</button>
+                  <button
                     class="btn-icon danger"
                     title="Delete scene"
                     @click=${() => this._deleteScene(scene.id)}
@@ -912,6 +1021,43 @@ class LightManagerPanel extends LitElement {
                 `
               )}
         </div>
+
+        ${isEditingAnimations
+          ? html`
+              <div class="animation-editor">
+                <div class="animation-editor-title">Animation effect per light</div>
+                ${sceneLightIds.length === 0
+                  ? html`<div class="animation-empty">Add groups and lights first to configure animation.</div>`
+                  : sceneLightIds.map(entityId => {
+                      const light = this._lights.find(l => l.entityId === entityId);
+                      const options = this._getLightAnimationOptions(entityId);
+                      const current = lightAnimations[entityId] || {};
+                      return html`
+                        <div class="animation-row">
+                          <span class="animation-light-name">${light?.name || entityId}</span>
+                          <select
+                            .value=${current.effect || ""}
+                            @change=${e => {
+                              this._updateLightAnimation(scene.id, entityId, "effect", e.target.value);
+                            }}
+                          >
+                            <option value="">No effect</option>
+                            ${options.map(option => html`<option value="${option}">${option}</option>`)}
+                          </select>
+                          <input
+                            type="text"
+                            placeholder="Transition (s)"
+                            .value=${current.transition != null ? String(current.transition) : ""}
+                            @change=${e => {
+                              this._updateLightAnimation(scene.id, entityId, "transition", e.target.value);
+                            }}
+                          />
+                        </div>
+                      `;
+                    })}
+              </div>
+            `
+          : ""}
 
         <div class="group-footer">
           <button
