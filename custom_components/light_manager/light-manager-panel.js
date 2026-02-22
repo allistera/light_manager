@@ -23,6 +23,7 @@ class LightManagerPanel extends LitElement {
     _editingSceneName: { state: true },
     _activatingSceneId: { state: true },
     _editingAnimationSceneId: { state: true },
+    _exportedSceneId: { state: true },
   };
 
   constructor() {
@@ -46,6 +47,7 @@ class LightManagerPanel extends LitElement {
     this._editingSceneName = "";
     this._activatingSceneId = null;
     this._editingAnimationSceneId = null;
+    this._exportedSceneId = null;
   }
 
   static styles = css`
@@ -396,7 +398,7 @@ class LightManagerPanel extends LitElement {
 
     .animation-row {
       display: grid;
-      grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) 100px;
+      grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) 120px 120px;
       gap: 8px;
       align-items: center;
       margin-bottom: 8px;
@@ -418,6 +420,13 @@ class LightManagerPanel extends LitElement {
       font-size: 0.85em;
       color: var(--secondary-text-color);
       font-style: italic;
+    }
+
+    .export-hint {
+      display: block;
+      margin-top: 8px;
+      font-size: 0.8em;
+      color: var(--success-color, #4caf50);
     }
   `;
 
@@ -543,7 +552,7 @@ class LightManagerPanel extends LitElement {
       let scenes = await this.hass.connection.sendMessagePromise({
         type: "light_manager/get_scenes",
       });
-      this._scenes = Array.isArray(scenes) ? scenes : [];
+      this._scenes = Array.isArray(scenes) ? scenes.map(scene => this._normalizeScene(scene)) : [];
       this._scenesLoaded = true;
     } catch (err) {
       console.error("Light Manager: failed to load scenes from HA", err);
@@ -569,6 +578,9 @@ class LightManagerPanel extends LitElement {
       id: Date.now().toString(),
       name,
       groupIds: [],
+      lightStates: {},
+      lightAnimations: {},
+      lightOverrides: {},
     };
     this._scenes = [...this._scenes, newScene];
     this._saveScenesToHA();
@@ -655,9 +667,26 @@ class LightManagerPanel extends LitElement {
           syncedAnimations[entityId] = existingAnimations[entityId];
         }
       });
-      return { ...s, lightStates, lightAnimations: syncedAnimations };
+      const existingOverrides = s.lightOverrides || {};
+      const syncedOverrides = {};
+      Object.keys(lightStates).forEach(entityId => {
+        if (existingOverrides[entityId]) {
+          syncedOverrides[entityId] = existingOverrides[entityId];
+        }
+      });
+      return { ...s, lightStates, lightAnimations: syncedAnimations, lightOverrides: syncedOverrides };
     });
     this._saveScenesToHA();
+  }
+
+  _normalizeScene(scene) {
+    return {
+      ...scene,
+      groupIds: Array.isArray(scene.groupIds) ? scene.groupIds : [],
+      lightStates: scene.lightStates || {},
+      lightAnimations: scene.lightAnimations || {},
+      lightOverrides: scene.lightOverrides || {},
+    };
   }
 
   _getSceneLightIds(scene) {
@@ -706,32 +735,78 @@ class LightManagerPanel extends LitElement {
     this._saveScenesToHA();
   }
 
+  _updateLightOverrideBrightness(sceneId, entityId, value) {
+    this._scenes = this._scenes.map(scene => {
+      if (scene.id !== sceneId) return scene;
+      const currentOverrides = scene.lightOverrides || {};
+      const current = currentOverrides[entityId] || {};
+      const nextValue = Number(value);
+      const next = { ...current };
+
+      if (!Number.isFinite(nextValue) || nextValue < 1 || nextValue > 100) {
+        delete next.brightness;
+      } else {
+        next.brightness = Math.round(nextValue / 100 * 255);
+      }
+
+      const updated = { ...currentOverrides };
+      if (Object.keys(next).length === 0) {
+        delete updated[entityId];
+      } else {
+        updated[entityId] = next;
+      }
+      return { ...scene, lightOverrides: updated };
+    });
+    this._saveScenesToHA();
+  }
+
   // Apply stored light states to all lights in the scene (Philips Hue-style recall)
   async _activateScene(sceneId) {
     const scene = this._scenes.find(s => s.id === sceneId);
-    if (!scene || !this.hass || !scene.lightStates) return;
+    if (!scene || !this.hass) return;
 
     this._activatingSceneId = sceneId;
     try {
-      await Promise.all(
-        Object.entries(scene.lightStates).map(([entityId, lightState]) => {
+      const allLightIds = new Set([
+        ...Object.keys(scene.lightStates || {}),
+        ...Object.keys(scene.lightOverrides || {}),
+      ]);
+      for (const entityId of allLightIds) {
+        const lightState = scene.lightStates?.[entityId] || { state: "on" };
           if (lightState.state === "off") {
-            return this.hass.callService("light", "turn_off", { entity_id: entityId });
+            await this.hass.callService("light", "turn_off", { entity_id: entityId });
+            continue;
           }
           const serviceData = { entity_id: entityId };
           if (lightState.brightness != null) serviceData.brightness = lightState.brightness;
           if (lightState.color_temp != null) serviceData.color_temp = lightState.color_temp;
           if (lightState.hs_color != null) serviceData.hs_color = lightState.hs_color;
+          const override = scene.lightOverrides?.[entityId];
+          if (override?.brightness != null) serviceData.brightness = override.brightness;
           const animation = scene.lightAnimations?.[entityId];
           if (animation?.effect) serviceData.effect = animation.effect;
           if (animation?.transition != null) serviceData.transition = animation.transition;
-          return this.hass.callService("light", "turn_on", serviceData);
-        })
-      );
+          await this.hass.callService("light", "turn_on", serviceData);
+      }
     } catch (err) {
       console.error("Light Manager: failed to activate scene", err);
     } finally {
       this._activatingSceneId = null;
+    }
+  }
+
+  async _copySceneExport(scene) {
+    const serviceData = `type: button\ntap_action:\n  action: perform-action\n  perform_action: light_manager.activate_scene\n  data:\n    scene_id: ${scene.id}\nname: ${scene.name}`;
+    try {
+      await navigator.clipboard.writeText(serviceData);
+      this._exportedSceneId = scene.id;
+      window.setTimeout(() => {
+        if (this._exportedSceneId === scene.id) {
+          this._exportedSceneId = null;
+        }
+      }, 2500);
+    } catch (err) {
+      console.error("Light Manager: failed to copy scene export", err);
     }
   }
 
@@ -954,7 +1029,8 @@ class LightManagerPanel extends LitElement {
     const isActivating = this._activatingSceneId === scene.id;
     const lightStates = scene.lightStates || {};
     const lightAnimations = scene.lightAnimations || {};
-    const hasStates = Object.keys(lightStates).length > 0;
+    const lightOverrides = scene.lightOverrides || {};
+    const hasStates = Object.keys(lightStates).length > 0 || Object.keys(lightOverrides).length > 0;
     const isEditingAnimations = this._editingAnimationSceneId === scene.id;
     const sceneLightIds = this._getSceneLightIds(scene);
 
@@ -981,6 +1057,11 @@ class LightManagerPanel extends LitElement {
                     title="Capture current light states into this scene"
                     @click=${() => this._captureSceneState(scene.id)}
                   >📷</button>
+                  <button
+                    class="btn-icon"
+                    title="Copy dashboard button config"
+                    @click=${() => this._copySceneExport(scene)}
+                  >📤</button>
                   <button
                     class="btn-icon"
                     title="Rename scene"
@@ -1025,13 +1106,15 @@ class LightManagerPanel extends LitElement {
         ${isEditingAnimations
           ? html`
               <div class="animation-editor">
-                <div class="animation-editor-title">Animation effect per light</div>
+                <div class="animation-editor-title">Animation + brightness per light</div>
                 ${sceneLightIds.length === 0
                   ? html`<div class="animation-empty">Add groups and lights first to configure animation.</div>`
                   : sceneLightIds.map(entityId => {
                       const light = this._lights.find(l => l.entityId === entityId);
                       const options = this._getLightAnimationOptions(entityId);
                       const current = lightAnimations[entityId] || {};
+                      const currentBrightness = lightOverrides[entityId]?.brightness;
+                      const brightnessPct = currentBrightness != null ? Math.round(currentBrightness / 255 * 100) : "";
                       return html`
                         <div class="animation-row">
                           <span class="animation-light-name">${light?.name || entityId}</span>
@@ -1052,9 +1135,20 @@ class LightManagerPanel extends LitElement {
                               this._updateLightAnimation(scene.id, entityId, "transition", e.target.value);
                             }}
                           />
+                          <input
+                            type="text"
+                            placeholder="Brightness %"
+                            .value=${String(brightnessPct)}
+                            @change=${e => {
+                              this._updateLightOverrideBrightness(scene.id, entityId, e.target.value);
+                            }}
+                          />
                         </div>
                       `;
                     })}
+                ${this._exportedSceneId === scene.id
+                  ? html`<span class="export-hint">Copied dashboard button YAML to clipboard.</span>`
+                  : ""}
               </div>
             `
           : ""}
