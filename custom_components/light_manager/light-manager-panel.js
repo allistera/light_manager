@@ -24,6 +24,7 @@ class LightManagerPanel extends LitElement {
     _activatingSceneId: { state: true },
     _editingAnimationSceneId: { state: true },
     _exportedSceneId: { state: true },
+    _sceneServices: { state: true },
   };
 
   constructor() {
@@ -48,20 +49,28 @@ class LightManagerPanel extends LitElement {
     this._activatingSceneId = null;
     this._editingAnimationSceneId = null;
     this._exportedSceneId = null;
+    this._sceneServices = {};
+    this._sceneServicesLoaded = false;
   }
 
   static styles = css`
     :host {
       display: block;
-      padding: 16px;
+      padding: 12px;
       background: var(--primary-background-color);
-      min-height: 100vh;
+      min-height: 100%;
+      box-sizing: border-box;
+    }
+
+    .panel-shell {
+      max-width: 1120px;
+      margin: 0 auto;
     }
 
     .header {
-      font-size: 2em;
-      font-weight: 300;
-      margin-bottom: 24px;
+      font-size: 1.55em;
+      font-weight: 500;
+      margin-bottom: 16px;
       color: var(--primary-text-color);
     }
 
@@ -69,16 +78,17 @@ class LightManagerPanel extends LitElement {
     .tabs {
       display: flex;
       gap: 4px;
-      margin-bottom: 20px;
+      margin-bottom: 12px;
       border-bottom: 2px solid var(--divider-color);
+      overflow-x: auto;
     }
 
     .tab {
-      padding: 10px 20px;
+      padding: 9px 14px;
       border: none;
       background: transparent;
       cursor: pointer;
-      font-size: 0.95em;
+      font-size: 0.9em;
       font-weight: 500;
       color: var(--secondary-text-color);
       border-bottom: 2px solid transparent;
@@ -115,12 +125,12 @@ class LightManagerPanel extends LitElement {
     .groups-toolbar {
       display: flex;
       justify-content: flex-end;
-      margin-bottom: 16px;
+      margin-bottom: 10px;
     }
 
     /* Buttons */
     button {
-      padding: 8px 16px;
+      padding: 8px 12px;
       border-radius: 4px;
       border: none;
       cursor: pointer;
@@ -183,14 +193,16 @@ class LightManagerPanel extends LitElement {
       display: flex;
       gap: 8px;
       align-items: center;
-      padding: 16px;
+      padding: 12px;
       background: var(--card-background-color);
       border-radius: 8px;
       box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
-      margin-bottom: 16px;
+      margin-bottom: 12px;
+      flex-wrap: wrap;
     }
 
-    input[type="text"] {
+    input[type="text"],
+    input[type="number"] {
       padding: 8px 12px;
       border: 1px solid var(--divider-color);
       border-radius: 4px;
@@ -201,7 +213,8 @@ class LightManagerPanel extends LitElement {
       min-width: 0;
     }
 
-    input[type="text"]:focus {
+    input[type="text"]:focus,
+    input[type="number"]:focus {
       outline: none;
       border-color: var(--primary-color);
     }
@@ -227,13 +240,13 @@ class LightManagerPanel extends LitElement {
     .groups-list {
       display: flex;
       flex-direction: column;
-      gap: 16px;
-      max-width: 1200px;
+      gap: 12px;
+      max-width: 100%;
     }
 
     .group-card {
       background: var(--card-background-color);
-      border-radius: 8px;
+      border-radius: 10px;
       box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
       overflow: hidden;
     }
@@ -242,7 +255,7 @@ class LightManagerPanel extends LitElement {
       display: flex;
       align-items: center;
       justify-content: space-between;
-      padding: 14px 16px;
+      padding: 10px 12px;
       background: var(--table-header-background-color, var(--secondary-background-color));
       border-bottom: 1px solid var(--divider-color);
       gap: 8px;
@@ -266,8 +279,8 @@ class LightManagerPanel extends LitElement {
     .group-light-row {
       display: flex;
       align-items: center;
-      gap: 12px;
-      padding: 10px 16px;
+      gap: 10px;
+      padding: 8px 12px;
       border-bottom: 1px solid var(--divider-color);
     }
 
@@ -299,9 +312,10 @@ class LightManagerPanel extends LitElement {
       display: flex;
       align-items: center;
       gap: 8px;
-      padding: 10px 16px;
+      padding: 10px 12px;
       border-top: 1px solid var(--divider-color);
       background: var(--secondary-background-color);
+      flex-wrap: wrap;
     }
 
     .edit-input {
@@ -375,6 +389,7 @@ class LightManagerPanel extends LitElement {
       gap: 4px;
       font-size: 0.85em;
       color: var(--secondary-text-color);
+      flex-wrap: wrap;
     }
 
     .capture-hint {
@@ -384,7 +399,7 @@ class LightManagerPanel extends LitElement {
     }
 
     .animation-editor {
-      padding: 12px 16px;
+      padding: 10px 12px;
       border-top: 1px solid var(--divider-color);
       background: var(--primary-background-color);
     }
@@ -398,9 +413,9 @@ class LightManagerPanel extends LitElement {
 
     .animation-row {
       display: grid;
-      grid-template-columns: minmax(140px, 1fr) minmax(140px, 1fr) 120px 120px;
+      grid-template-columns: minmax(130px, 1fr) minmax(180px, 1.1fr) minmax(130px, 0.8fr) minmax(130px, 0.8fr);
       gap: 8px;
-      align-items: center;
+      align-items: end;
       margin-bottom: 8px;
     }
 
@@ -414,6 +429,52 @@ class LightManagerPanel extends LitElement {
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
+      padding-bottom: 7px;
+    }
+
+    .animation-control {
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+      min-width: 0;
+    }
+
+    .control-label {
+      font-size: 0.75em;
+      color: var(--secondary-text-color);
+      text-transform: uppercase;
+      letter-spacing: 0.03em;
+    }
+
+    .scene-summary {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      flex-wrap: wrap;
+      margin-right: auto;
+    }
+
+    .scene-config-pill {
+      font-size: 0.78em;
+      padding: 2px 7px;
+      border-radius: 999px;
+      background: var(--primary-color);
+      color: var(--text-primary-color, white);
+      opacity: 0.9;
+    }
+
+    .scene-service-hint {
+      font-size: 0.78em;
+      color: var(--secondary-text-color);
+    }
+
+    .scene-service-hint code {
+      font-family: var(--code-font-family, monospace);
+      font-size: 0.95em;
+      background: var(--secondary-background-color);
+      padding: 1px 4px;
+      border-radius: 4px;
+      color: var(--primary-text-color);
     }
 
     .animation-empty {
@@ -422,11 +483,33 @@ class LightManagerPanel extends LitElement {
       font-style: italic;
     }
 
+    .preview-meta {
+      font-size: 0.8em;
+      margin-right: 4px;
+    }
+
+    .preview-live {
+      font-size: 0.78em;
+      color: var(--secondary-text-color);
+      opacity: 0.9;
+    }
+
     .export-hint {
       display: block;
       margin-top: 8px;
       font-size: 0.8em;
       color: var(--success-color, #4caf50);
+    }
+
+    @media (max-width: 900px) {
+      .animation-row {
+        grid-template-columns: 1fr;
+        align-items: stretch;
+      }
+
+      .animation-light-name {
+        padding-bottom: 0;
+      }
     }
   `;
 
@@ -439,6 +522,9 @@ class LightManagerPanel extends LitElement {
       }
       if (this.hass && !this._scenesLoaded) {
         this._loadScenesFromHA();
+      }
+      if (this.hass && !this._sceneServicesLoaded) {
+        this._loadSceneServicesFromHA();
       }
     }
   }
@@ -554,10 +640,26 @@ class LightManagerPanel extends LitElement {
       });
       this._scenes = Array.isArray(scenes) ? scenes.map(scene => this._normalizeScene(scene)) : [];
       this._scenesLoaded = true;
+      this._loadSceneServicesFromHA();
     } catch (err) {
       console.error("Light Manager: failed to load scenes from HA", err);
       this._scenes = [];
       this._scenesLoaded = true;
+    }
+  }
+
+  async _loadSceneServicesFromHA() {
+    if (!this.hass) return;
+    try {
+      const services = await this.hass.connection.sendMessagePromise({
+        type: "light_manager/get_scene_services",
+      });
+      this._sceneServices = services && typeof services === "object" ? services : {};
+      this._sceneServicesLoaded = true;
+    } catch (err) {
+      console.error("Light Manager: failed to load scene services from HA", err);
+      this._sceneServices = {};
+      this._sceneServicesLoaded = true;
     }
   }
 
@@ -566,6 +668,8 @@ class LightManagerPanel extends LitElement {
     this.hass.connection.sendMessagePromise({
       type: "light_manager/save_scenes",
       scenes: this._scenes,
+    }).then(() => {
+      this._loadSceneServicesFromHA();
     }).catch(err => {
       console.error("Light Manager: failed to save scenes to HA", err);
     });
@@ -700,6 +804,21 @@ class LightManagerPanel extends LitElement {
     return [...sceneLightIds];
   }
 
+  _getConfiguredSceneLightIds(scene) {
+    const lightStates = scene.lightStates || {};
+    const lightOverrides = scene.lightOverrides || {};
+    const lightAnimations = scene.lightAnimations || {};
+    return [...new Set([
+      ...Object.keys(lightStates),
+      ...Object.keys(lightOverrides),
+      ...Object.keys(lightAnimations),
+    ])];
+  }
+
+  _getSceneServiceName(sceneId) {
+    return this._sceneServices?.[sceneId] || null;
+  }
+
   _getLightAnimationOptions(entityId) {
     const entityState = this.hass?.states?.[entityId];
     const effectList = entityState?.attributes?.effect_list;
@@ -760,33 +879,18 @@ class LightManagerPanel extends LitElement {
     this._saveScenesToHA();
   }
 
-  // Apply stored light states to all lights in the scene (Philips Hue-style recall)
+  // Activate through backend service to match automation behavior exactly
   async _activateScene(sceneId) {
     const scene = this._scenes.find(s => s.id === sceneId);
     if (!scene || !this.hass) return;
 
     this._activatingSceneId = sceneId;
     try {
-      const allLightIds = new Set([
-        ...Object.keys(scene.lightStates || {}),
-        ...Object.keys(scene.lightOverrides || {}),
-      ]);
-      for (const entityId of allLightIds) {
-        const lightState = scene.lightStates?.[entityId] || { state: "on" };
-          if (lightState.state === "off") {
-            await this.hass.callService("light", "turn_off", { entity_id: entityId });
-            continue;
-          }
-          const serviceData = { entity_id: entityId };
-          if (lightState.brightness != null) serviceData.brightness = lightState.brightness;
-          if (lightState.color_temp != null) serviceData.color_temp = lightState.color_temp;
-          if (lightState.hs_color != null) serviceData.hs_color = lightState.hs_color;
-          const override = scene.lightOverrides?.[entityId];
-          if (override?.brightness != null) serviceData.brightness = override.brightness;
-          const animation = scene.lightAnimations?.[entityId];
-          if (animation?.effect) serviceData.effect = animation.effect;
-          if (animation?.transition != null) serviceData.transition = animation.transition;
-          await this.hass.callService("light", "turn_on", serviceData);
+      const sceneService = this._getSceneServiceName(sceneId);
+      if (sceneService) {
+        await this.hass.callService("light_manager", sceneService, {});
+      } else {
+        await this.hass.callService("light_manager", "activate_scene", { scene_id: sceneId });
       }
     } catch (err) {
       console.error("Light Manager: failed to activate scene", err);
@@ -796,7 +900,10 @@ class LightManagerPanel extends LitElement {
   }
 
   async _copySceneExport(scene) {
-    const serviceData = `type: button\ntap_action:\n  action: perform-action\n  perform_action: light_manager.activate_scene\n  data:\n    scene_id: ${scene.id}\nname: ${scene.name}`;
+    const sceneService = this._getSceneServiceName(scene.id);
+    const performAction = sceneService ? `light_manager.${sceneService}` : "light_manager.activate_scene";
+    const dataBlock = sceneService ? "" : `\n  data:\n    scene_id: ${scene.id}`;
+    const serviceData = `type: button\ntap_action:\n  action: perform-action\n  perform_action: ${performAction}${dataBlock}\nname: ${scene.name}`;
     try {
       await navigator.clipboard.writeText(serviceData);
       this._exportedSceneId = scene.id;
@@ -814,18 +921,20 @@ class LightManagerPanel extends LitElement {
 
   render() {
     return html`
-      <div class="header">Light Manager</div>
-      <div class="tabs">
-        <button
-          class="tab ${this._activeTab === "groups" ? "active" : ""}"
-          @click=${() => { this._activeTab = "groups"; }}
-        >Groups (${this._groups.length})</button>
-        <button
-          class="tab ${this._activeTab === "scenes" ? "active" : ""}"
-          @click=${() => { this._activeTab = "scenes"; }}
-        >Scenes (${this._scenes.length})</button>
+      <div class="panel-shell">
+        <div class="header">Light Manager</div>
+        <div class="tabs">
+          <button
+            class="tab ${this._activeTab === "groups" ? "active" : ""}"
+            @click=${() => { this._activeTab = "groups"; }}
+          >Groups (${this._groups.length})</button>
+          <button
+            class="tab ${this._activeTab === "scenes" ? "active" : ""}"
+            @click=${() => { this._activeTab = "scenes"; }}
+          >Scenes (${this._scenes.length})</button>
+        </div>
+        ${this._activeTab === "groups" ? this._renderGroups() : this._renderScenes()}
       </div>
-      ${this._activeTab === "groups" ? this._renderGroups() : this._renderScenes()}
     `;
   }
 
@@ -1030,7 +1139,9 @@ class LightManagerPanel extends LitElement {
     const lightStates = scene.lightStates || {};
     const lightAnimations = scene.lightAnimations || {};
     const lightOverrides = scene.lightOverrides || {};
-    const hasStates = Object.keys(lightStates).length > 0 || Object.keys(lightOverrides).length > 0;
+    const configuredLightIds = this._getConfiguredSceneLightIds(scene);
+    const hasStates = configuredLightIds.length > 0;
+    const sceneServiceName = this._getSceneServiceName(scene.id);
     const isEditingAnimations = this._editingAnimationSceneId === scene.id;
     const sceneLightIds = this._getSceneLightIds(scene);
 
@@ -1069,11 +1180,11 @@ class LightManagerPanel extends LitElement {
                   >✏️</button>
                   <button
                     class="btn-icon"
-                    title="Configure animation effects"
+                    title="Configure per-light scene/effect and brightness"
                     @click=${() => {
                       this._editingAnimationSceneId = isEditingAnimations ? null : scene.id;
                     }}
-                  >✨</button>
+                  >🎛️</button>
                   <button
                     class="btn-icon danger"
                     title="Delete scene"
@@ -1091,7 +1202,7 @@ class LightManagerPanel extends LitElement {
                   <div class="group-light-row">
                     <span class="light-name">${group.name}</span>
                     <div class="scene-lights-preview">
-                      ${this._renderGroupStatePreview(group, lightStates)}
+                      ${this._renderGroupStatePreview(group, lightStates, lightOverrides, lightAnimations)}
                     </div>
                     <button
                       class="remove-btn"
@@ -1106,7 +1217,7 @@ class LightManagerPanel extends LitElement {
         ${isEditingAnimations
           ? html`
               <div class="animation-editor">
-                <div class="animation-editor-title">Animation + brightness per light</div>
+                <div class="animation-editor-title">Per-light scene/effect, transition, and brightness</div>
                 ${sceneLightIds.length === 0
                   ? html`<div class="animation-empty">Add groups and lights first to configure animation.</div>`
                   : sceneLightIds.map(entityId => {
@@ -1118,31 +1229,45 @@ class LightManagerPanel extends LitElement {
                       return html`
                         <div class="animation-row">
                           <span class="animation-light-name">${light?.name || entityId}</span>
-                          <select
-                            .value=${current.effect || ""}
-                            @change=${e => {
-                              this._updateLightAnimation(scene.id, entityId, "effect", e.target.value);
-                            }}
-                          >
-                            <option value="">No effect</option>
-                            ${options.map(option => html`<option value="${option}">${option}</option>`)}
-                          </select>
-                          <input
-                            type="text"
-                            placeholder="Transition (s)"
-                            .value=${current.transition != null ? String(current.transition) : ""}
-                            @change=${e => {
-                              this._updateLightAnimation(scene.id, entityId, "transition", e.target.value);
-                            }}
-                          />
-                          <input
-                            type="text"
-                            placeholder="Brightness %"
-                            .value=${String(brightnessPct)}
-                            @change=${e => {
-                              this._updateLightOverrideBrightness(scene.id, entityId, e.target.value);
-                            }}
-                          />
+                          <div class="animation-control">
+                            <span class="control-label">Scene / effect</span>
+                            <select
+                              .value=${current.effect || ""}
+                              @change=${e => {
+                                this._updateLightAnimation(scene.id, entityId, "effect", e.target.value);
+                              }}
+                            >
+                              <option value="">Use light default</option>
+                              ${options.map(option => html`<option value="${option}">${option}</option>`)}
+                            </select>
+                          </div>
+                          <div class="animation-control">
+                            <span class="control-label">Transition (seconds)</span>
+                            <input
+                              type="number"
+                              min="0.1"
+                              step="0.1"
+                              placeholder="None"
+                              .value=${current.transition != null ? String(current.transition) : ""}
+                              @change=${e => {
+                                this._updateLightAnimation(scene.id, entityId, "transition", e.target.value);
+                              }}
+                            />
+                          </div>
+                          <div class="animation-control">
+                            <span class="control-label">Brightness (%)</span>
+                            <input
+                              type="number"
+                              min="1"
+                              max="100"
+                              step="1"
+                              placeholder="Use captured"
+                              .value=${String(brightnessPct)}
+                              @change=${e => {
+                                this._updateLightOverrideBrightness(scene.id, entityId, e.target.value);
+                              }}
+                            />
+                          </div>
                         </div>
                       `;
                     })}
@@ -1158,11 +1283,22 @@ class LightManagerPanel extends LitElement {
             class="btn-activate"
             ?disabled=${!hasStates || isActivating}
             @click=${() => this._activateScene(scene.id)}
-          >${isActivating ? "Activating..." : "▶ Activate"}</button>
+          >${isActivating ? "Testing..." : "▶ Test Scene"}</button>
           ${!hasStates && sceneGroups.length > 0
-            ? html`<span class="capture-hint">Press 📷 to capture states first</span>`
+            ? html`<span class="capture-hint">Capture states and/or configure per-light scene/effect first</span>`
             : ""}
-          <span style="flex:1"></span>
+          <div class="scene-summary">
+            ${configuredLightIds.length > 0
+              ? html`<span class="scene-config-pill">${configuredLightIds.length} configured</span>`
+              : ""}
+            ${sceneServiceName
+              ? html`
+                  <span class="scene-service-hint">
+                    Service: <code>light_manager.${sceneServiceName}</code>
+                  </span>
+                `
+              : ""}
+          </div>
           ${isAddingGroup
             ? html`
                 <select
@@ -1196,16 +1332,31 @@ class LightManagerPanel extends LitElement {
     `;
   }
 
-  // Render colored state dots for each captured light in a group
-  _renderGroupStatePreview(group, lightStates) {
-    const capturedLights = group.lightIds.filter(id => lightStates[id]);
-    if (capturedLights.length === 0) {
-      return html`<span style="font-size:0.8em">${group.lightIds.length} ${group.lightIds.length === 1 ? "light" : "lights"}</span>`;
+  // Render scene + live preview dots for lights in a group
+  _renderGroupStatePreview(group, lightStates, lightOverrides = {}, lightAnimations = {}) {
+    const configuredLights = group.lightIds.filter(id =>
+      lightStates[id] || lightOverrides[id] || lightAnimations[id]
+    );
+    const liveOnCount = group.lightIds.filter(id => this.hass?.states?.[id]?.state === "on").length;
+
+    if (configuredLights.length === 0) {
+      return html`
+        <span class="preview-meta">${group.lightIds.length} ${group.lightIds.length === 1 ? "light" : "lights"}</span>
+        <span class="preview-live">Live ${liveOnCount}/${group.lightIds.length} on</span>
+      `;
     }
-    const onCount = capturedLights.filter(id => lightStates[id].state === "on").length;
+
+    const onCount = configuredLights.filter(id => {
+      const state = lightStates[id];
+      return !state || state.state !== "off";
+    }).length;
+
     return html`
-      <span style="font-size:0.8em;margin-right:4px">${onCount}/${capturedLights.length} on</span>
-      ${capturedLights.slice(0, 5).map(id => this._renderStateDot(lightStates[id]))}
+      <span class="preview-meta">Scene ${onCount}/${configuredLights.length} on</span>
+      <span class="preview-live">Live ${liveOnCount}/${group.lightIds.length} on</span>
+      ${configuredLights.slice(0, 5).map(id => this._renderStateDot(
+        lightStates[id] || { state: "on", brightness: lightOverrides[id]?.brightness }
+      ))}
     `;
   }
 
