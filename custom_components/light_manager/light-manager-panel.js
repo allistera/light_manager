@@ -64,6 +64,7 @@ class LightManagerPanel extends LitElement {
 
     .panel-shell {
       max-width: 1120px;
+      width: 100%;
       margin: 0 auto;
     }
 
@@ -81,6 +82,7 @@ class LightManagerPanel extends LitElement {
       margin-bottom: 12px;
       border-bottom: 2px solid var(--divider-color);
       overflow-x: auto;
+      -webkit-overflow-scrolling: touch;
     }
 
     .tab {
@@ -94,6 +96,7 @@ class LightManagerPanel extends LitElement {
       border-bottom: 2px solid transparent;
       margin-bottom: -2px;
       transition: color 0.2s, border-color 0.2s;
+      white-space: nowrap;
     }
 
     .tab:hover {
@@ -177,6 +180,12 @@ class LightManagerPanel extends LitElement {
       border-radius: 4px;
       line-height: 1;
       color: var(--secondary-text-color);
+      min-width: 34px;
+      min-height: 34px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
     }
 
     .btn-icon:hover {
@@ -259,17 +268,23 @@ class LightManagerPanel extends LitElement {
       background: var(--table-header-background-color, var(--secondary-background-color));
       border-bottom: 1px solid var(--divider-color);
       gap: 8px;
+      flex-wrap: wrap;
     }
 
     .group-name {
       font-size: 1.1em;
       font-weight: 500;
       color: var(--primary-text-color);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
 
     .group-actions {
       display: flex;
       gap: 4px;
+      flex-wrap: wrap;
     }
 
     .group-lights {
@@ -291,6 +306,9 @@ class LightManagerPanel extends LitElement {
     .light-name {
       flex: 1;
       color: var(--primary-text-color);
+      min-width: 0;
+      overflow: hidden;
+      text-overflow: ellipsis;
     }
 
     .light-state {
@@ -331,6 +349,12 @@ class LightManagerPanel extends LitElement {
       padding: 0 4px;
       line-height: 1;
       border-radius: 3px;
+      width: 30px;
+      height: 30px;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: manipulation;
     }
 
     .remove-btn:hover {
@@ -390,6 +414,8 @@ class LightManagerPanel extends LitElement {
       font-size: 0.85em;
       color: var(--secondary-text-color);
       flex-wrap: wrap;
+      min-width: 0;
+      flex: 1;
     }
 
     .capture-hint {
@@ -475,6 +501,7 @@ class LightManagerPanel extends LitElement {
       padding: 1px 4px;
       border-radius: 4px;
       color: var(--primary-text-color);
+      word-break: break-all;
     }
 
     .animation-empty {
@@ -492,6 +519,7 @@ class LightManagerPanel extends LitElement {
       font-size: 0.78em;
       color: var(--secondary-text-color);
       opacity: 0.9;
+      white-space: nowrap;
     }
 
     .export-hint {
@@ -502,6 +530,15 @@ class LightManagerPanel extends LitElement {
     }
 
     @media (max-width: 900px) {
+      :host {
+        padding: 10px;
+      }
+
+      .header {
+        font-size: 1.4em;
+        margin-bottom: 12px;
+      }
+
       .animation-row {
         grid-template-columns: 1fr;
         align-items: stretch;
@@ -509,6 +546,84 @@ class LightManagerPanel extends LitElement {
 
       .animation-light-name {
         padding-bottom: 0;
+      }
+
+      .group-actions {
+        width: 100%;
+        justify-content: flex-end;
+      }
+
+      .group-footer .btn-activate {
+        width: 100%;
+      }
+
+      .group-footer .scene-summary {
+        width: 100%;
+        margin-right: 0;
+      }
+    }
+
+    @media (max-width: 640px) {
+      :host {
+        padding: 8px;
+      }
+
+      .header {
+        font-size: 1.25em;
+      }
+
+      .tab {
+        padding: 9px 10px;
+        font-size: 0.85em;
+      }
+
+      .groups-toolbar {
+        justify-content: stretch;
+      }
+
+      .groups-toolbar .btn-primary {
+        width: 100%;
+      }
+
+      .create-group-form input,
+      .create-group-form select,
+      .create-group-form button {
+        flex: 1 1 100%;
+      }
+
+      .group-card-header {
+        padding: 8px 10px;
+      }
+
+      .group-light-row {
+        padding: 8px 10px;
+        align-items: flex-start;
+        flex-wrap: wrap;
+      }
+
+      .light-name {
+        width: 100%;
+      }
+
+      .light-state {
+        min-width: 0;
+        text-align: left;
+      }
+
+      .scene-lights-preview {
+        flex-basis: 100%;
+      }
+
+      .remove-btn {
+        margin-left: auto;
+      }
+
+      .group-footer {
+        padding: 8px 10px;
+      }
+
+      .group-footer > * {
+        flex: 1 1 100%;
       }
     }
   `;
