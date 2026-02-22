@@ -21,6 +21,7 @@ class LightManagerPanel extends LitElement {
     _addingGroupToScene: { state: true },
     _editingSceneId: { state: true },
     _editingSceneName: { state: true },
+    _activatingSceneId: { state: true },
   };
 
   constructor() {
@@ -42,6 +43,7 @@ class LightManagerPanel extends LitElement {
     this._addingGroupToScene = null;
     this._editingSceneId = null;
     this._editingSceneName = "";
+    this._activatingSceneId = null;
   }
 
   static styles = css`
@@ -327,6 +329,55 @@ class LightManagerPanel extends LitElement {
       color: var(--primary-text-color);
       font-size: 0.95em;
     }
+
+    .btn-activate {
+      background: var(--success-color, #4caf50);
+      color: white;
+      padding: 8px 20px;
+      font-weight: 600;
+      border-radius: 4px;
+      border: none;
+      cursor: pointer;
+      font-size: 0.9em;
+      transition: filter 0.2s, opacity 0.2s;
+    }
+
+    .btn-activate:hover:not(:disabled) {
+      filter: brightness(1.1);
+    }
+
+    .btn-activate:disabled {
+      opacity: 0.4;
+      cursor: not-allowed;
+    }
+
+    .state-dot {
+      display: inline-block;
+      width: 10px;
+      height: 10px;
+      border-radius: 50%;
+      margin: 0 1px;
+      vertical-align: middle;
+      border: 1px solid rgba(0, 0, 0, 0.15);
+    }
+
+    .state-dot-off {
+      background: var(--divider-color, #e0e0e0);
+    }
+
+    .scene-lights-preview {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 0.85em;
+      color: var(--secondary-text-color);
+    }
+
+    .capture-hint {
+      font-size: 0.8em;
+      color: var(--warning-color, #ff9800);
+      font-style: italic;
+    }
   `;
 
   updated(changedProps) {
@@ -526,6 +577,64 @@ class LightManagerPanel extends LitElement {
   _cancelEditScene() {
     this._editingSceneId = null;
     this._editingSceneName = "";
+  }
+
+  // Capture current HA light states for every light across all groups in the scene
+  _captureSceneState(sceneId) {
+    const scene = this._scenes.find(s => s.id === sceneId);
+    if (!scene || !this.hass) return;
+
+    const lightIds = new Set();
+    scene.groupIds.forEach(groupId => {
+      const group = this._groups.find(g => g.id === groupId);
+      if (group) group.lightIds.forEach(id => lightIds.add(id));
+    });
+
+    const lightStates = {};
+    lightIds.forEach(entityId => {
+      const entityState = this.hass.states[entityId];
+      if (!entityState) return;
+      const captured = { state: entityState.state };
+      if (entityState.state === "on") {
+        const attrs = entityState.attributes;
+        if (attrs.brightness != null) captured.brightness = attrs.brightness;
+        if (attrs.color_temp != null) captured.color_temp = attrs.color_temp;
+        if (attrs.hs_color != null) captured.hs_color = attrs.hs_color;
+        if (attrs.color_mode != null) captured.color_mode = attrs.color_mode;
+      }
+      lightStates[entityId] = captured;
+    });
+
+    this._scenes = this._scenes.map(s =>
+      s.id === sceneId ? { ...s, lightStates } : s
+    );
+    this._saveScenesToHA();
+  }
+
+  // Apply stored light states to all lights in the scene (Philips Hue-style recall)
+  async _activateScene(sceneId) {
+    const scene = this._scenes.find(s => s.id === sceneId);
+    if (!scene || !this.hass || !scene.lightStates) return;
+
+    this._activatingSceneId = sceneId;
+    try {
+      await Promise.all(
+        Object.entries(scene.lightStates).map(([entityId, lightState]) => {
+          if (lightState.state === "off") {
+            return this.hass.callService("light", "turn_off", { entity_id: entityId });
+          }
+          const serviceData = { entity_id: entityId };
+          if (lightState.brightness != null) serviceData.brightness = lightState.brightness;
+          if (lightState.color_temp != null) serviceData.color_temp = lightState.color_temp;
+          if (lightState.hs_color != null) serviceData.hs_color = lightState.hs_color;
+          return this.hass.callService("light", "turn_on", serviceData);
+        })
+      );
+    } catch (err) {
+      console.error("Light Manager: failed to activate scene", err);
+    } finally {
+      this._activatingSceneId = null;
+    }
   }
 
   // ── Render ──────────────────────────────────────────────────────────────
@@ -743,6 +852,9 @@ class LightManagerPanel extends LitElement {
     const isEditing = this._editingSceneId === scene.id;
     const isAddingGroup = this._addingGroupToScene === scene.id;
     const availableGroups = this._groups.filter(g => !scene.groupIds.includes(g.id));
+    const isActivating = this._activatingSceneId === scene.id;
+    const lightStates = scene.lightStates || {};
+    const hasStates = Object.keys(lightStates).length > 0;
 
     return html`
       <div class="group-card">
@@ -764,6 +876,11 @@ class LightManagerPanel extends LitElement {
                 <div class="group-actions">
                   <button
                     class="btn-icon"
+                    title="Capture current light states into this scene"
+                    @click=${() => this._captureSceneState(scene.id)}
+                  >📷</button>
+                  <button
+                    class="btn-icon"
                     title="Rename scene"
                     @click=${() => this._startEditScene(scene)}
                   >✏️</button>
@@ -783,9 +900,9 @@ class LightManagerPanel extends LitElement {
                 group => html`
                   <div class="group-light-row">
                     <span class="light-name">${group.name}</span>
-                    <span style="font-size:0.85em;color:var(--secondary-text-color)">
-                      ${group.lightIds.length} ${group.lightIds.length === 1 ? "light" : "lights"}
-                    </span>
+                    <div class="scene-lights-preview">
+                      ${this._renderGroupStatePreview(group, lightStates)}
+                    </div>
                     <button
                       class="remove-btn"
                       title="Remove from scene"
@@ -797,6 +914,15 @@ class LightManagerPanel extends LitElement {
         </div>
 
         <div class="group-footer">
+          <button
+            class="btn-activate"
+            ?disabled=${!hasStates || isActivating}
+            @click=${() => this._activateScene(scene.id)}
+          >${isActivating ? "Activating..." : "▶ Activate"}</button>
+          ${!hasStates && sceneGroups.length > 0
+            ? html`<span class="capture-hint">Press 📷 to capture states first</span>`
+            : ""}
+          <span style="flex:1"></span>
           ${isAddingGroup
             ? html`
                 <select
@@ -821,13 +947,53 @@ class LightManagerPanel extends LitElement {
                   ?disabled=${availableGroups.length === 0}
                   @click=${() => { this._addingGroupToScene = scene.id; }}
                 >+ Add Group</button>
-                ${availableGroups.length === 0
+                ${availableGroups.length === 0 && this._groups.length > 0
                   ? html`<span style="font-size:0.85em;color:var(--secondary-text-color)">All groups are already in this scene.</span>`
                   : ""}
               `}
         </div>
       </div>
     `;
+  }
+
+  // Render colored state dots for each captured light in a group
+  _renderGroupStatePreview(group, lightStates) {
+    const capturedLights = group.lightIds.filter(id => lightStates[id]);
+    if (capturedLights.length === 0) {
+      return html`<span style="font-size:0.8em">${group.lightIds.length} ${group.lightIds.length === 1 ? "light" : "lights"}</span>`;
+    }
+    const onCount = capturedLights.filter(id => lightStates[id].state === "on").length;
+    return html`
+      <span style="font-size:0.8em;margin-right:4px">${onCount}/${capturedLights.length} on</span>
+      ${capturedLights.slice(0, 5).map(id => this._renderStateDot(lightStates[id]))}
+    `;
+  }
+
+  // Render a single colored dot representing a captured light state
+  _renderStateDot(lightState) {
+    if (!lightState || lightState.state === "off") {
+      return html`<span class="state-dot state-dot-off" title="Off"></span>`;
+    }
+    let style = "";
+    if (lightState.hs_color) {
+      const [h, s] = lightState.hs_color;
+      const l = lightState.brightness != null ? Math.round(lightState.brightness / 255 * 40 + 25) : 50;
+      style = `background: hsl(${h}, ${s}%, ${l}%)`;
+    } else if (lightState.color_temp) {
+      // Map mireds to a warm (amber) → cool (white) hue range
+      const kelvin = 1000000 / lightState.color_temp;
+      const t = Math.min(1, Math.max(0, (kelvin - 2000) / 4500));
+      const hue = Math.round(45 - t * 35);
+      const sat = Math.round(90 - t * 85);
+      const l = lightState.brightness != null ? Math.round(lightState.brightness / 255 * 30 + 40) : 60;
+      style = `background: hsl(${hue}, ${sat}%, ${l}%)`;
+    } else {
+      const l = lightState.brightness != null ? Math.round(lightState.brightness / 255 * 40 + 30) : 60;
+      style = `background: hsl(45, 70%, ${l}%)`;
+    }
+    const bPct = lightState.brightness != null ? Math.round(lightState.brightness / 255 * 100) : null;
+    const title = bPct != null ? `On (${bPct}%)` : "On";
+    return html`<span class="state-dot" style="${style}" title="${title}"></span>`;
   }
 }
 
