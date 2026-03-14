@@ -18,7 +18,7 @@ A HACS-compatible custom component that displays all currently "on" lights in a 
 1. Open HACS in Home Assistant
 2. Click "Integrations"
 3. Click the three dots menu and select "Custom repositories"
-4. Add this repository URL: `https://github.com/YOUR_USERNAME/light-manager`
+4. Add this repository URL: `https://github.com/allistera/light_manager`
 5. Select category "Integration"
 6. Click "Install"
 7. Restart Home Assistant
@@ -124,8 +124,8 @@ Issues and pull requests are welcome! Please:
 
 ## Support
 
-- **Issues**: Report bugs at the [issue tracker](https://github.com/YOUR_USERNAME/light-manager/issues)
-- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/YOUR_USERNAME/light-manager/discussions)
+- **Issues**: Report bugs at the [issue tracker](https://github.com/allistera/light_manager/issues)
+- **Discussions**: Ask questions in [GitHub Discussions](https://github.com/allistera/light_manager/discussions)
 - **Home Assistant Community**: [Community forum thread](https://community.home-assistant.io/) (link TBD)
 
 ## License
@@ -138,4 +138,3 @@ Created with the Home Assistant custom component framework and Lit Element.
 
 ---
 
-**Note**: Replace `YOUR_USERNAME` in the URLs above with your actual GitHub username before publishing.
