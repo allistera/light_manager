@@ -1017,6 +1017,25 @@ class LightManagerPanel extends LitElement {
     .group-select-btn { padding:8px 16px; border-radius:999px; background:var(--secondary-background-color); border:1px solid var(--divider-color); cursor:pointer; font-size:0.9em; color:var(--primary-text-color); }
     .group-select-btn:hover { background:var(--primary-color); color:white; border-color:var(--primary-color); }
     .all-groups-on-btn { background:var(--success-color,#4caf50); color:white; }
+
+    /* Scene color cards */
+    .scene-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(120px,1fr)); gap:8px; padding:8px 12px; }
+    .scene-tile { border-radius:12px; overflow:hidden; background:var(--secondary-background-color); display:flex; flex-direction:column; cursor:default; }
+    .scene-tile-swatch { height:72px; width:100%; flex-shrink:0; }
+    .scene-tile-name { font-size:0.82em; font-weight:600; color:var(--primary-text-color); padding:6px 8px 2px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+    .scene-tile-actions { display:flex; gap:2px; padding:2px 4px 6px; }
+    .scene-tile-actions .btn-icon { padding:2px 6px; font-size:0.85em; min-width:28px; min-height:28px; }
+
+    /* Light cards grid */
+    .light-cards-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(100px,1fr)); gap:8px; padding:8px 12px; }
+    .light-card { position:relative; background:var(--secondary-background-color); border-radius:12px; padding:12px 8px 8px; display:flex; flex-direction:column; align-items:center; gap:6px; transition:background 0.2s; }
+    .light-card.on { background:color-mix(in srgb, var(--primary-color) 18%, var(--card-background-color)); }
+    .light-card-icon { font-size:1.8em; line-height:1; opacity:0.7; }
+    .light-card.on .light-card-icon { opacity:1; }
+    .light-card-name { font-size:0.75em; font-weight:500; color:var(--primary-text-color); text-align:center; word-break:break-word; line-height:1.2; }
+    .light-card-remove { position:absolute; top:4px; right:4px; background:transparent; border:none; cursor:pointer; font-size:0.85em; color:var(--secondary-text-color); line-height:1; padding:2px; border-radius:3px; width:18px; height:18px; display:flex; align-items:center; justify-content:center; }
+    .light-card-remove:hover { background:var(--error-color,#db4437); color:white; }
+    .light-card .light-toggle-btn { font-size:0.75em; padding:3px 10px; margin-top:auto; }
   `;
 
   updated(changedProps) {
@@ -1317,6 +1336,7 @@ class LightManagerPanel extends LitElement {
     const newScene = {
       id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       name,
+      groupId: groupIdList[0] || null,
       groupIds: [...groupIdList],
       lightStates,
       lightAnimations,
@@ -1432,6 +1452,9 @@ class LightManagerPanel extends LitElement {
     this._saveScenesToHA();
     this._sceneLibraryPopupId = null;
     this._sceneLibraryShowGroupSelect = null;
+    if (groupId) {
+      this._activeTab = "light_groups";
+    }
   }
 
 
@@ -1517,6 +1540,31 @@ class LightManagerPanel extends LitElement {
       }
     });
     return [...sceneLightIds];
+  }
+
+  _getSceneSwatchStyle(scene) {
+    const states = Object.values(scene.lightStates || {});
+    const colors = states
+      .filter(s => s.state !== "off" && s.hs_color)
+      .map(s => {
+        const [h, sat] = s.hs_color;
+        const l = s.brightness != null ? Math.round(s.brightness / 255 * 35 + 30) : 52;
+        return `hsl(${h}, ${sat}%, ${l}%)`;
+      });
+    if (colors.length >= 2) {
+      return `background: linear-gradient(135deg, ${colors.slice(0, 4).join(", ")})`;
+    }
+    if (colors.length === 1) {
+      return `background: ${colors[0]}`;
+    }
+    // Fallback: color_temp
+    const tempState = states.find(s => s.state !== "off" && s.color_temp);
+    if (tempState) {
+      const kelvin = 1000000 / tempState.color_temp;
+      const t = Math.min(1, Math.max(0, (kelvin - 2000) / 4500));
+      return `background: hsl(${Math.round(45 - t * 35)}, ${Math.round(90 - t * 85)}%, 52%)`;
+    }
+    return "background: var(--primary-color)";
   }
 
   _getConfiguredSceneLightIds(scene) {
@@ -2004,11 +2052,12 @@ class LightManagerPanel extends LitElement {
         <!-- MY SCENES section -->
         <div class="group-section-label">My Scenes</div>
         ${groupScenes.length === 0
-          ? html`<div class="no-lights-msg">No scenes for this group yet.</div>`
+          ? html`<div class="no-lights-msg">No scenes yet. Use + Add Scene below.</div>`
           : html`
               <div class="scene-tiles">
                 ${groupScenes.map(scene => html`
                   <div class="scene-tile">
+                    <div class="scene-tile-swatch" style="${this._getSceneSwatchStyle(scene)}"></div>
                     <div class="scene-tile-name" title="${scene.name}">${scene.name}</div>
                     <div class="scene-tile-actions">
                       <button
@@ -2036,34 +2085,36 @@ class LightManagerPanel extends LitElement {
 
         <!-- LIGHTS section -->
         <div class="group-section-label">Lights</div>
-        <div class="group-lights">
-          ${lightIds.length === 0
-            ? html`<div class="no-lights-msg">No lights in this group yet.</div>`
-            : lightIds.map(entityId => {
-                const light = this._lights.find(l => l.entityId === entityId);
-                const lightName = light?.name || entityId;
-                const lightState = this.hass?.states?.[entityId]?.state;
-                const isOn = lightState === "on";
-                return html`
-                  <div class="group-light-row">
-                    <span class="light-name">${lightName}</span>
-                    <button
-                      class="light-toggle-btn ${isOn ? "on" : ""}"
-                      @click=${() => {
-                        this.hass.callService("light", isOn ? "turn_off" : "turn_on", {
-                          entity_id: entityId,
-                        });
-                      }}
-                    >${isOn ? "On" : "Off"}</button>
-                    <button
-                      class="remove-btn"
-                      title="Remove from group"
-                      @click=${() => this._removeLightFromGroup(group.id, entityId)}
-                    >&times;</button>
-                  </div>
-                `;
-              })}
-        </div>
+        ${lightIds.length === 0
+          ? html`<div class="no-lights-msg">No lights in this group yet.</div>`
+          : html`
+              <div class="light-cards-grid">
+                ${lightIds.map(entityId => {
+                  const light = this._lights.find(l => l.entityId === entityId);
+                  const lightName = light?.name || entityId;
+                  const isOn = this.hass?.states?.[entityId]?.state === "on";
+                  return html`
+                    <div class="light-card ${isOn ? "on" : ""}">
+                      <button
+                        class="light-card-remove"
+                        title="Remove from group"
+                        @click=${() => this._removeLightFromGroup(group.id, entityId)}
+                      >&times;</button>
+                      <span class="light-card-icon">💡</span>
+                      <span class="light-card-name">${lightName}</span>
+                      <button
+                        class="light-toggle-btn ${isOn ? "on" : ""}"
+                        @click=${() => {
+                          this.hass.callService("light", isOn ? "turn_off" : "turn_on", {
+                            entity_id: entityId,
+                          });
+                        }}
+                      >${isOn ? "On" : "Off"}</button>
+                    </div>
+                  `;
+                })}
+              </div>
+            `}
 
         <!-- Add light row -->
         ${isAddingLight
@@ -2204,7 +2255,7 @@ class LightManagerPanel extends LitElement {
                 <button
                   class="scene-library-card"
                   @click=${() => {
-                    this._saveLibraryPresetAsScene(preset, 0, false, group.id);
+                    this._saveLibraryPresetAsScene(preset, 0, true, group.id);
                     this._showAddSceneToGroupId = null;
                   }}
                 >
