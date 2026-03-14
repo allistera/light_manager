@@ -25,6 +25,11 @@ class LightManagerPanel extends LitElement {
     _editingAnimationSceneId: { state: true },
     _exportedSceneId: { state: true },
     _sceneServices: { state: true },
+    _scenePopupSceneId: { state: true },
+    _popupNewSceneName: { state: true },
+    _sceneLibrarySearch: { state: true },
+    _sceneLibraryPopupId: { state: true },
+    _sceneLibraryColorIndex: { state: true },
   };
 
   constructor() {
@@ -51,6 +56,11 @@ class LightManagerPanel extends LitElement {
     this._exportedSceneId = null;
     this._sceneServices = {};
     this._sceneServicesLoaded = false;
+    this._scenePopupSceneId = null;
+    this._popupNewSceneName = "";
+    this._sceneLibrarySearch = "";
+    this._sceneLibraryPopupId = null;
+    this._sceneLibraryColorIndex = 0;
   }
 
   static styles = css`
@@ -529,6 +539,300 @@ class LightManagerPanel extends LitElement {
       color: var(--success-color, #4caf50);
     }
 
+
+
+    .scene-library-toolbar {
+      display: flex;
+      gap: 8px;
+      margin-bottom: 10px;
+      align-items: center;
+    }
+
+    .scene-library-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(210px, 1fr));
+      gap: 10px;
+    }
+
+    .scene-library-card {
+      border: none;
+      border-radius: 12px;
+      overflow: hidden;
+      background: var(--card-background-color);
+      box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.12));
+      padding: 0;
+      text-align: left;
+    }
+
+    .scene-library-thumb {
+      height: 96px;
+      width: 100%;
+      background-size: cover;
+      background-position: center;
+      position: relative;
+    }
+
+    .scene-library-title {
+      display: block;
+      padding: 10px 12px;
+      color: var(--primary-text-color);
+      font-weight: 600;
+      font-size: 0.95em;
+    }
+
+    .scene-library-category {
+      font-size: 0.75em;
+      text-transform: uppercase;
+      letter-spacing: 0.11em;
+      color: var(--secondary-text-color);
+      margin: 8px 2px 4px;
+      grid-column: 1 / -1;
+      font-weight: 600;
+    }
+
+    .scene-library-popup {
+      width: min(640px, 100%);
+      border-radius: 18px;
+      overflow: hidden;
+      background: #1f2128;
+      box-shadow: 0 20px 42px rgba(0, 0, 0, 0.52);
+      color: #f2f4f8;
+    }
+
+    .scene-library-popup-image {
+      height: 230px;
+      position: relative;
+      background-size: cover;
+      background-position: center;
+      display: flex;
+      align-items: flex-end;
+      padding: 16px;
+      box-sizing: border-box;
+    }
+
+    .scene-library-popup-image::after {
+      content: "";
+      position: absolute;
+      inset: 0;
+      background: linear-gradient(to top, rgba(0, 0, 0, 0.46), transparent 55%);
+    }
+
+    .scene-library-popup-name {
+      position: relative;
+      z-index: 1;
+      font-size: 2em;
+      margin: 0;
+      color: #ffffff;
+      font-weight: 700;
+    }
+
+    .scene-library-popup-body {
+      padding: 14px 16px 18px;
+      background: #30333c;
+    }
+
+    .scene-library-palette {
+      display: flex;
+      gap: 8px;
+      flex-wrap: wrap;
+      margin-bottom: 14px;
+    }
+
+    .scene-library-color {
+      width: 44px;
+      height: 44px;
+      border-radius: 50%;
+      border: 2px solid transparent;
+      box-shadow: 0 4px 8px rgba(0, 0, 0, 0.28);
+      padding: 0;
+      min-width: 44px;
+      min-height: 44px;
+    }
+
+    .scene-library-color.active {
+      border-color: white;
+      transform: scale(1.08);
+    }
+
+    .scene-library-popup-actions {
+      display: grid;
+      grid-template-columns: 1fr;
+      gap: 10px;
+      margin-top: 8px;
+    }
+
+    .scene-library-popup-actions button {
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.22);
+      background: rgba(255, 255, 255, 0.08);
+      color: #f1f3f6;
+      font-weight: 700;
+      letter-spacing: 0.02em;
+      text-transform: uppercase;
+      font-size: 0.86em;
+      padding: 11px 14px;
+    }
+
+    .scene-library-popup-actions button:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    .scene-popup-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(8, 12, 20, 0.72);
+      backdrop-filter: blur(4px);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      z-index: 20;
+      padding: 14px;
+      box-sizing: border-box;
+    }
+
+    .scene-popup-card {
+      width: min(540px, 100%);
+      border-radius: 20px;
+      overflow: hidden;
+      background: linear-gradient(175deg, #efcc72 0%, #c79f44 34%, #26221b 84%, #151515 100%);
+      box-shadow: 0 18px 40px rgba(0, 0, 0, 0.42);
+      color: #f8f5eb;
+    }
+
+    .scene-popup-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 20px 20px 14px;
+      gap: 12px;
+    }
+
+    .scene-popup-title {
+      font-size: 1.35em;
+      font-weight: 600;
+      margin: 0;
+    }
+
+    .scene-popup-subtitle {
+      margin: 4px 0 0;
+      color: rgba(248, 245, 235, 0.88);
+      font-size: 0.88em;
+    }
+
+    .scene-popup-close {
+      border-radius: 999px;
+      min-width: 36px;
+      min-height: 36px;
+      font-size: 1.1em;
+      color: #f8f5eb;
+      background: rgba(20, 20, 20, 0.28);
+    }
+
+    .scene-popup-content {
+      background: rgba(18, 18, 18, 0.78);
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+      padding: 14px 16px 16px;
+    }
+
+    .scene-popup-label {
+      margin: 2px 0 10px;
+      font-size: 0.78em;
+      color: rgba(248, 245, 235, 0.72);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      font-weight: 600;
+    }
+
+    .scene-popup-chip-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+
+    .scene-popup-chip {
+      border-radius: 999px;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      padding: 5px 10px;
+      font-size: 0.82em;
+      color: #fff7db;
+      background: rgba(255, 255, 255, 0.08);
+    }
+
+    .scene-popup-actions {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .scene-popup-actions button {
+      width: 100%;
+      border-radius: 999px;
+      padding: 9px 10px;
+      background: rgba(255, 255, 255, 0.12);
+      color: #f8f5eb;
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      font-size: 0.82em;
+      font-weight: 600;
+    }
+
+    .scene-popup-actions button:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.2);
+    }
+
+    .scene-popup-create {
+      margin-top: 12px;
+      border-top: 1px solid rgba(255, 255, 255, 0.14);
+      padding-top: 12px;
+    }
+
+    .scene-popup-create-row {
+      display: flex;
+      gap: 8px;
+      margin-top: 6px;
+      flex-wrap: wrap;
+    }
+
+    .scene-popup-create-row input {
+      background: rgba(255, 255, 255, 0.14);
+      border-color: rgba(255, 255, 255, 0.24);
+      color: #fff7db;
+      min-width: 220px;
+    }
+
+    .scene-popup-create-row input::placeholder {
+      color: rgba(255, 247, 219, 0.62);
+    }
+
+    .scene-popup-create-actions {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .scene-popup-create-actions button {
+      width: 100%;
+      border-radius: 10px;
+      background: rgba(255, 255, 255, 0.08);
+      color: #f8f5eb;
+      border: 1px solid rgba(255, 255, 255, 0.18);
+      font-size: 0.8em;
+      padding: 8px 10px;
+    }
+
+    .scene-popup-create-actions button:hover:not(:disabled) {
+      background: rgba(255, 255, 255, 0.16);
+    }
+
+    @media (max-width: 640px) {
+      .scene-popup-actions,
+      .scene-popup-create-actions {
+        grid-template-columns: 1fr;
+      }
+    }
+
     @media (max-width: 900px) {
       :host {
         padding: 10px;
@@ -624,6 +928,10 @@ class LightManagerPanel extends LitElement {
 
       .group-footer > * {
         flex: 1 1 100%;
+      }
+
+      .scene-library-popup-image {
+        height: 180px;
       }
     }
   `;
@@ -898,6 +1206,165 @@ class LightManagerPanel extends LitElement {
     this._saveScenesToHA();
   }
 
+
+
+  _getLightIdsForGroupIds(groupIds) {
+    const sceneLightIds = new Set();
+    groupIds.forEach(groupId => {
+      const group = this._groups.find(g => g.id === groupId);
+      if (group) {
+        group.lightIds.forEach(lightId => sceneLightIds.add(lightId));
+      }
+    });
+    return [...sceneLightIds];
+  }
+
+  _buildPresetLightStates(groupIds, presetType) {
+    const lightIds = this._getLightIdsForGroupIds(groupIds);
+    const lightStates = {};
+    const presets = {
+      relax: { brightness: 130, color_temp: 400 },
+      focus: { brightness: 255, color_temp: 250 },
+      night: { brightness: 45, color_temp: 454 },
+    };
+    const preset = presets[presetType];
+    if (!preset) return lightStates;
+
+    lightIds.forEach(entityId => {
+      lightStates[entityId] = {
+        state: "on",
+        brightness: preset.brightness,
+        color_temp: preset.color_temp,
+        color_mode: "color_temp",
+      };
+    });
+    return lightStates;
+  }
+
+  _createSceneFromPopup(baseScene, mode = "duplicate") {
+    if (!baseScene) return;
+
+    const name = this._popupNewSceneName.trim() || `${baseScene.name} ${mode === "duplicate" ? "Copy" : mode[0].toUpperCase() + mode.slice(1)}`;
+    let lightStates = {};
+    let lightAnimations = {};
+    let lightOverrides = {};
+
+    if (mode === "duplicate") {
+      lightStates = { ...(baseScene.lightStates || {}) };
+      lightAnimations = { ...(baseScene.lightAnimations || {}) };
+      lightOverrides = { ...(baseScene.lightOverrides || {}) };
+    } else if (mode === "capture") {
+      const sceneLightIds = this._getLightIdsForGroupIds(baseScene.groupIds || []);
+      sceneLightIds.forEach(entityId => {
+        const entityState = this.hass?.states?.[entityId];
+        if (!entityState) return;
+        const captured = { state: entityState.state };
+        if (entityState.state === "on") {
+          const attrs = entityState.attributes;
+          if (attrs.brightness != null) captured.brightness = attrs.brightness;
+          if (attrs.color_temp != null) captured.color_temp = attrs.color_temp;
+          if (attrs.hs_color != null) captured.hs_color = attrs.hs_color;
+          if (attrs.color_mode != null) captured.color_mode = attrs.color_mode;
+        }
+        lightStates[entityId] = captured;
+      });
+    } else {
+      lightStates = this._buildPresetLightStates(baseScene.groupIds || [], mode);
+    }
+
+    const newScene = {
+      id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name,
+      groupIds: [...(baseScene.groupIds || [])],
+      lightStates,
+      lightAnimations,
+      lightOverrides,
+    };
+
+    this._scenes = [...this._scenes, newScene];
+    this._saveScenesToHA();
+    this._popupNewSceneName = "";
+    this._scenePopupSceneId = newScene.id;
+  }
+
+
+  _getSceneLibraryPresets() {
+    return [
+      { id: "adrift", name: "Adrift", category: "Ocean", gradient: "linear-gradient(135deg, #3e6cff 0%, #9b6cff 45%, #ff8fb0 100%)", palette: [[216, 70, 46], [228, 36, 40], [240, 26, 38], [278, 22, 50], [18, 24, 52], [46, 80, 72]] },
+      { id: "soho", name: "Soho", category: "Futuristic", gradient: "linear-gradient(135deg, #ff2a9d 0%, #7f3fff 45%, #00b1ff 100%)", palette: [[328, 92, 58], [280, 82, 56], [204, 88, 54], [20, 72, 58], [46, 80, 68]] },
+      { id: "magneto", name: "Magneto", category: "Futuristic", gradient: "linear-gradient(135deg, #0d1f5d 0%, #102c9a 42%, #2de2e6 100%)", palette: [[210, 80, 42], [224, 74, 50], [192, 82, 56], [264, 32, 54], [46, 68, 67]] },
+      { id: "winter_beauty", name: "Winter Beauty", category: "Nature", gradient: "linear-gradient(135deg, #7fa0c9 0%, #b5d2ef 48%, #f1fbff 100%)", palette: [[208, 26, 68], [212, 38, 74], [194, 22, 78], [228, 18, 70], [50, 40, 75]] },
+      { id: "disturbia", name: "Disturbia", category: "Futuristic", gradient: "linear-gradient(135deg, #450036 0%, #a32055 40%, #ff8a00 100%)", palette: [[324, 76, 43], [340, 64, 45], [20, 92, 55], [290, 36, 42], [46, 80, 70]] },
+      { id: "silverstone", name: "Silverstone", category: "Race", gradient: "linear-gradient(135deg, #0c1328 0%, #244e89 43%, #9dc7f7 100%)", palette: [[220, 62, 38], [206, 56, 52], [198, 52, 64], [250, 24, 40], [46, 68, 72]] },
+      { id: "singapore", name: "Singapore", category: "Race", gradient: "linear-gradient(135deg, #160016 0%, #8b0659 38%, #f73284 100%)", palette: [[320, 80, 45], [334, 72, 52], [290, 54, 46], [212, 58, 50], [50, 72, 70]] },
+      { id: "sao_paulo", name: "São Paulo", category: "Race", gradient: "linear-gradient(135deg, #00212f 0%, #04787a 46%, #6fe7bb 100%)", palette: [[190, 66, 40], [174, 60, 46], [162, 54, 60], [206, 40, 52], [46, 70, 70]] },
+    ];
+  }
+
+  _getFilteredSceneLibraryPresets() {
+    const term = this._sceneLibrarySearch.trim().toLowerCase();
+    const presets = this._getSceneLibraryPresets();
+    if (!term) return presets;
+    return presets.filter(preset => (
+      preset.name.toLowerCase().includes(term) ||
+      preset.category.toLowerCase().includes(term)
+    ));
+  }
+
+  _getAllSceneGroupIds() {
+    return this._groups.map(group => group.id);
+  }
+
+  async _setLibraryPresetOnce(preset, colorIndex = 0) {
+    const color = preset.palette[colorIndex] || preset.palette[0];
+    if (!color || !this.hass) return;
+    const [hue, saturation, lightness] = color;
+    const brightness = Math.min(255, Math.max(10, Math.round(lightness / 100 * 255)));
+    const saturationPct = Math.min(100, Math.max(0, saturation));
+    const targetLightIds = this._getLightIdsForGroupIds(this._getAllSceneGroupIds());
+    if (targetLightIds.length === 0) return;
+
+    await Promise.all(targetLightIds.map(entityId => this.hass.callService("light", "turn_on", {
+      entity_id: entityId,
+      hs_color: [hue, saturationPct],
+      brightness,
+      transition: 0.6,
+    })));
+  }
+
+  _saveLibraryPresetAsScene(preset, colorIndex = 0) {
+    const color = preset.palette[colorIndex] || preset.palette[0];
+    if (!color) return;
+    const [hue, saturation, lightness] = color;
+    const brightness = Math.min(255, Math.max(10, Math.round(lightness / 100 * 255)));
+    const targetGroupIds = this._getAllSceneGroupIds();
+    const targetLightIds = this._getLightIdsForGroupIds(targetGroupIds);
+    const lightStates = {};
+
+    targetLightIds.forEach(entityId => {
+      lightStates[entityId] = {
+        state: "on",
+        hs_color: [hue, saturation],
+        color_mode: "hs",
+        brightness,
+      };
+    });
+
+    const newScene = {
+      id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
+      name: preset.name,
+      groupIds: targetGroupIds,
+      lightStates,
+      lightAnimations: {},
+      lightOverrides: {},
+    };
+
+    this._scenes = [...this._scenes, newScene];
+    this._saveScenesToHA();
+    this._sceneLibraryPopupId = null;
+    this._activeTab = "scenes";
+  }
+
   _normalizeScene(scene) {
     return {
       ...scene,
@@ -1047,9 +1514,19 @@ class LightManagerPanel extends LitElement {
             class="tab ${this._activeTab === "scenes" ? "active" : ""}"
             @click=${() => { this._activeTab = "scenes"; }}
           >Scenes (${this._scenes.length})</button>
+          <button
+            class="tab ${this._activeTab === "scene_library" ? "active" : ""}"
+            @click=${() => { this._activeTab = "scene_library"; }}
+          >Scene Library</button>
         </div>
-        ${this._activeTab === "groups" ? this._renderGroups() : this._renderScenes()}
+        ${this._activeTab === "groups"
+          ? this._renderGroups()
+          : this._activeTab === "scenes"
+            ? this._renderScenes()
+            : this._renderSceneLibrary()}
       </div>
+      ${this._renderScenePopup()}
+      ${this._renderSceneLibraryPopup()}
     `;
   }
 
@@ -1197,6 +1674,49 @@ class LightManagerPanel extends LitElement {
     `;
   }
 
+
+  _renderSceneLibrary() {
+    const filteredPresets = this._getFilteredSceneLibraryPresets();
+    let previousCategory = null;
+    return html`
+      <div class="scene-library-toolbar">
+        <input
+          type="text"
+          placeholder="Search scene library"
+          .value=${this._sceneLibrarySearch}
+          @input=${e => { this._sceneLibrarySearch = e.target.value; }}
+        />
+      </div>
+      ${filteredPresets.length === 0
+        ? html`
+            <div class="empty-state">
+              <div class="empty-state-icon">🔎</div>
+              <div>No scene presets found for "${this._sceneLibrarySearch}".</div>
+            </div>
+          `
+        : html`
+            <div class="scene-library-grid">
+              ${filteredPresets.map(preset => {
+                const categoryBlock = preset.category !== previousCategory
+                  ? html`<div class="scene-library-category">${preset.category}</div>`
+                  : "";
+                previousCategory = preset.category;
+                return html`
+                  ${categoryBlock}
+                  <button class="scene-library-card" @click=${() => {
+                    this._sceneLibraryPopupId = preset.id;
+                    this._sceneLibraryColorIndex = 0;
+                  }}>
+                    <div class="scene-library-thumb" style="background:${preset.gradient}"></div>
+                    <span class="scene-library-title">${preset.name}</span>
+                  </button>
+                `;
+              })}
+            </div>
+          `}
+    `;
+  }
+
   _renderScenes() {
     return html`
       <div class="groups-toolbar">
@@ -1278,6 +1798,11 @@ class LightManagerPanel extends LitElement {
             : html`
                 <span class="group-name">${scene.name}</span>
                 <div class="group-actions">
+                  <button
+                    class="btn-icon"
+                    title="Open Hue-style popup"
+                    @click=${() => { this._scenePopupSceneId = scene.id; }}
+                  >🪟</button>
                   <button
                     class="btn-icon"
                     title="Capture current light states into this scene"
@@ -1442,6 +1967,105 @@ class LightManagerPanel extends LitElement {
                   ? html`<span style="font-size:0.85em;color:var(--secondary-text-color)">All groups are already in this scene.</span>`
                   : ""}
               `}
+        </div>
+      </div>
+    `;
+  }
+
+
+  _renderSceneLibraryPopup() {
+    if (!this._sceneLibraryPopupId) return "";
+    const preset = this._getSceneLibraryPresets().find(item => item.id === this._sceneLibraryPopupId);
+    if (!preset) return "";
+
+    return html`
+      <div class="scene-popup-backdrop" @click=${() => { this._sceneLibraryPopupId = null; }}>
+        <div class="scene-library-popup" @click=${e => { e.stopPropagation(); }}>
+          <div class="scene-library-popup-image" style="background:${preset.gradient}">
+            <h3 class="scene-library-popup-name">${preset.name}</h3>
+            <button class="btn-icon scene-popup-close" title="Close" style="position:absolute;top:12px;right:12px;color:#fff" @click=${() => { this._sceneLibraryPopupId = null; }}>✕</button>
+          </div>
+          <div class="scene-library-popup-body">
+            <div class="scene-library-palette">
+              ${preset.palette.map((color, idx) => html`
+                <button
+                  class="scene-library-color ${this._sceneLibraryColorIndex === idx ? "active" : ""}"
+                  style="background:hsl(${color[0]}, ${color[1]}%, ${color[2]}%)"
+                  title="Use color ${idx + 1}"
+                  @click=${() => { this._sceneLibraryColorIndex = idx; }}
+                ></button>
+              `)}
+            </div>
+            <div class="scene-library-popup-actions">
+              <button @click=${() => this._saveLibraryPresetAsScene(preset, this._sceneLibraryColorIndex)}>Save to my scenes</button>
+              <button @click=${() => this._setLibraryPresetOnce(preset, this._sceneLibraryColorIndex)}>Set once</button>
+            </div>
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderScenePopup() {
+    if (!this._scenePopupSceneId) return "";
+    const scene = this._scenes.find(s => s.id === this._scenePopupSceneId);
+    if (!scene) return "";
+
+    const sceneGroups = scene.groupIds
+      .map(id => this._groups.find(g => g.id === id))
+      .filter(Boolean);
+    const configuredLightIds = this._getConfiguredSceneLightIds(scene);
+    const sceneServiceName = this._getSceneServiceName(scene.id);
+    const hasStates = Object.keys(scene.lightStates || {}).length > 0 || configuredLightIds.length > 0;
+    const isActivating = this._activatingSceneId === scene.id;
+
+    return html`
+      <div class="scene-popup-backdrop" @click=${() => { this._scenePopupSceneId = null; }}>
+        <div class="scene-popup-card" @click=${e => { e.stopPropagation(); }}>
+          <div class="scene-popup-header">
+            <div>
+              <h3 class="scene-popup-title">${scene.name}</h3>
+              <p class="scene-popup-subtitle">${sceneGroups.length} ${sceneGroups.length === 1 ? "group" : "groups"} · ${configuredLightIds.length} configured lights</p>
+            </div>
+            <button class="btn-icon scene-popup-close" title="Close" @click=${() => { this._scenePopupSceneId = null; }}>✕</button>
+          </div>
+          <div class="scene-popup-content">
+            <p class="scene-popup-label">Included groups</p>
+            <div class="scene-popup-chip-row">
+              ${sceneGroups.length === 0
+                ? html`<span class="scene-popup-chip">No groups yet</span>`
+                : sceneGroups.map(group => html`<span class="scene-popup-chip">${group.name}</span>`)}
+            </div>
+            ${sceneServiceName
+              ? html`<div class="scene-service-hint">Service: <code>light_manager.${sceneServiceName}</code></div>`
+              : ""}
+            <div class="scene-popup-actions">
+              <button ?disabled=${!hasStates || isActivating} @click=${() => this._activateScene(scene.id)}>${isActivating ? "Testing..." : "▶ Test Scene"}</button>
+              <button @click=${() => this._captureSceneState(scene.id)}>📸 Capture</button>
+              <button @click=${() => this._copySceneExport(scene)}>📋 Copy YAML</button>
+            </div>
+            ${!hasStates && sceneGroups.length > 0
+              ? html`<span class="capture-hint">Capture states and/or configure per-light scene/effect first</span>`
+              : ""}
+            <div class="scene-popup-create">
+              <p class="scene-popup-label">Create specific scenes</p>
+              <div class="scene-popup-create-row">
+                <input
+                  type="text"
+                  placeholder="New scene name (optional)"
+                  .value=${this._popupNewSceneName}
+                  @input=${e => { this._popupNewSceneName = e.target.value; }}
+                />
+                <button @click=${() => this._createSceneFromPopup(scene, "duplicate")}>➕ Duplicate</button>
+              </div>
+              <div class="scene-popup-create-actions">
+                <button @click=${() => this._createSceneFromPopup(scene, "capture")}>📸 Capture as new</button>
+                <button ?disabled=${sceneGroups.length === 0} @click=${() => this._createSceneFromPopup(scene, "relax")}>🟠 Relax preset</button>
+                <button ?disabled=${sceneGroups.length === 0} @click=${() => this._createSceneFromPopup(scene, "focus")}>🔵 Focus preset</button>
+                <button ?disabled=${sceneGroups.length === 0} @click=${() => this._createSceneFromPopup(scene, "night")}>🌙 Night preset</button>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     `;
