@@ -10,6 +10,7 @@ from homeassistant.components import websocket_api
 from homeassistant.components.frontend import async_register_built_in_panel
 from homeassistant.components.http import StaticPathConfig
 from homeassistant.core import HomeAssistant, ServiceCall
+from homeassistant.helpers import config_validation as cv
 from homeassistant.helpers.storage import Store
 from homeassistant.util import slugify
 
@@ -22,6 +23,8 @@ STORAGE_VERSION = 1
 SERVICE_ACTIVATE_SCENE = "activate_scene"
 SERVICE_STOP_SCENE = "stop_scene"
 SERVICE_EXPORT_SCENES = "export_scenes"
+
+CONFIG_SCHEMA = cv.empty_config_schema(DOMAIN)
 
 
 async def async_setup(hass: HomeAssistant, config: dict) -> bool:
