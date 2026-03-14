@@ -44,6 +44,18 @@ After installation and restart, "Light Manager" will appear in the sidebar with 
 
 *Screenshots will be added after initial release*
 
+## Quality gates
+
+This repository includes a GitHub Actions workflow (`.github/workflows/lint.yml`) that runs on every pull request and validates:
+
+- Python linting with Ruff
+- Home Assistant metadata and structure with Hassfest
+- HACS compatibility checks with `hacs/action`
+
+To enforce this before merge, set the `Lint & Validation` workflow checks as required in your branch protection rules.
+
+Dependency updates are automated with Dependabot (`.github/dependabot.yml`) for GitHub Actions and pip definitions so workflow/tooling dependencies stay current.
+
 ## Development
 
 > **Local setup guide**: See [docs/local-development.md](docs/local-development.md) for step-by-step instructions on running Home Assistant locally for faster iteration — including symlinking the component, reloading without restarts, and adding demo lights.
@@ -63,8 +75,7 @@ light-manager/
 │   └── light_manager/
 │       ├── __init__.py                 # Component initialization
 │       ├── manifest.json               # Component metadata
-│       ├── frontend/
-│       │   └── light-manager-panel.js  # Lit Element panel
+│       ├── light-manager-panel.js      # Lit Element panel
 │       └── translations/
 │           └── en.json                 # English translations
 ├── hacs.json                           # HACS metadata

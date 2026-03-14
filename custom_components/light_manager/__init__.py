@@ -139,7 +139,10 @@ def _build_scene_service_map(scenes: list[dict]) -> dict[str, str]:
 
         candidate = f"scene_{base[:52].rstrip('_')}"
         dedupe = 2
-        while candidate in used_services or candidate in {SERVICE_ACTIVATE_SCENE, SERVICE_EXPORT_SCENES}:
+        while candidate in used_services or candidate in {
+            SERVICE_ACTIVATE_SCENE,
+            SERVICE_EXPORT_SCENES,
+        }:
             candidate = f"scene_{base[:44].rstrip('_')}_{dedupe}"
             dedupe += 1
 
@@ -149,7 +152,10 @@ def _build_scene_service_map(scenes: list[dict]) -> dict[str, str]:
     return service_map
 
 
-async def _async_sync_scene_services(hass: HomeAssistant, scenes: list[dict] | None = None) -> dict[str, str]:
+async def _async_sync_scene_services(
+    hass: HomeAssistant,
+    scenes: list[dict] | None = None,
+) -> dict[str, str]:
     """Keep per-scene service registrations aligned with stored scenes."""
     if scenes is None:
         scenes = await _async_load_scenes(hass)
@@ -220,7 +226,11 @@ async def _async_apply_scene(hass: HomeAssistant, scene: dict) -> None:
 
     all_light_ids = {
         entity_id
-        for entity_id in set(light_states.keys()) | set(light_overrides.keys()) | set(light_animations.keys())
+        for entity_id in (
+            set(light_states.keys())
+            | set(light_overrides.keys())
+            | set(light_animations.keys())
+        )
         if entity_id
     }
     if not all_light_ids:
@@ -380,7 +390,11 @@ async def _async_activate_scene_service(hass: HomeAssistant, call: ServiceCall) 
         None,
     )
     if not scene:
-        _LOGGER.warning("Requested scene not found for activation: id=%s name=%s", scene_id, scene_name)
+        _LOGGER.warning(
+            "Requested scene not found for activation: id=%s name=%s",
+            scene_id,
+            scene_name,
+        )
         return
 
     await _async_apply_scene(hass, scene)
