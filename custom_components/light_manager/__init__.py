@@ -1,6 +1,7 @@
 """Light Manager integration for Home Assistant."""
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 
@@ -28,6 +29,7 @@ async def async_setup(hass: HomeAssistant, config: dict) -> bool:
     hass.data[DOMAIN]["store"] = Store(hass, STORAGE_VERSION, STORAGE_KEY)
     hass.data[DOMAIN]["scenes_store"] = Store(hass, STORAGE_VERSION, SCENES_STORAGE_KEY)
     hass.data[DOMAIN]["scene_service_map"] = {}
+    hass.data[DOMAIN]["animation_tasks"] = {}
     await async_register_frontend_resources(hass)
     await async_register_frontend_panel(hass)
     _register_websocket_handlers(hass)
@@ -57,7 +59,7 @@ async def async_register_frontend_panel(hass: HomeAssistant) -> None:
         config={
             "_panel_custom": {
                 "name": "light-manager-panel",
-                "module_url": "/light_manager_static/light-manager-panel.js?v=10",
+                "module_url": "/light_manager_static/light-manager-panel.js?v=11",
             }
         },
         require_admin=False,
@@ -226,6 +228,7 @@ async def _async_apply_scene(hass: HomeAssistant, scene: dict) -> None:
         return
 
     for entity_id in all_light_ids:
+        _cancel_animation_task(hass, entity_id)
         state = light_states.get(entity_id, {})
         if not isinstance(state, dict):
             state = {}
@@ -259,6 +262,99 @@ async def _async_apply_scene(hass: HomeAssistant, scene: dict) -> None:
                 service_data["transition"] = animation["transition"]
 
         await hass.services.async_call("light", "turn_on", service_data, blocking=True)
+
+        if isinstance(animation, dict):
+            await _async_start_color_cycle_if_configured(hass, entity_id, animation)
+
+
+def _cancel_animation_task(hass: HomeAssistant, entity_id: str) -> None:
+    """Stop any existing color-cycle task for a light."""
+    tasks: dict[str, asyncio.Task] = hass.data[DOMAIN].setdefault("animation_tasks", {})
+    task = tasks.pop(entity_id, None)
+    if task:
+        task.cancel()
+
+
+def _normalize_color_step(step: dict) -> dict | None:
+    """Normalize a color-step payload to service-ready values."""
+    if not isinstance(step, dict):
+        return None
+
+    hs_color = step.get("hs_color")
+    if not (
+        isinstance(hs_color, list)
+        and len(hs_color) == 2
+        and all(isinstance(value, (int, float)) for value in hs_color)
+    ):
+        return None
+
+    normalized: dict[str, object] = {
+        "hs_color": [float(hs_color[0]), float(hs_color[1])],
+    }
+    brightness = step.get("brightness")
+    if isinstance(brightness, (int, float)):
+        normalized["brightness"] = max(1, min(255, int(brightness)))
+    return normalized
+
+
+async def _async_start_color_cycle_if_configured(
+    hass: HomeAssistant,
+    entity_id: str,
+    animation: dict,
+) -> None:
+    """Start a per-light color-cycle animation task if defined."""
+    sequence = animation.get("color_sequence")
+    if not isinstance(sequence, list) or len(sequence) < 2:
+        return
+
+    steps = [step for item in sequence if (step := _normalize_color_step(item)) is not None]
+    if len(steps) < 2:
+        return
+
+    interval = animation.get("interval_seconds", 2)
+    try:
+        interval_value = float(interval)
+    except (TypeError, ValueError):
+        interval_value = 2.0
+    interval_value = max(0.2, interval_value)
+    repeat = bool(animation.get("repeat", False))
+
+    async def _run_cycle() -> None:
+        try:
+            while True:
+                for step in steps[1:]:
+                    service_data = {
+                        "entity_id": entity_id,
+                        "hs_color": step["hs_color"],
+                        "transition": interval_value,
+                    }
+                    if step.get("brightness") is not None:
+                        service_data["brightness"] = step["brightness"]
+                    await hass.services.async_call("light", "turn_on", service_data, blocking=True)
+                    await asyncio.sleep(interval_value)
+                if not repeat:
+                    break
+                restart_step = steps[0]
+                restart_data = {
+                    "entity_id": entity_id,
+                    "hs_color": restart_step["hs_color"],
+                    "transition": interval_value,
+                }
+                if restart_step.get("brightness") is not None:
+                    restart_data["brightness"] = restart_step["brightness"]
+                await hass.services.async_call("light", "turn_on", restart_data, blocking=True)
+                await asyncio.sleep(interval_value)
+        except asyncio.CancelledError:
+            raise
+        except Exception:  # pragma: no cover - defensive logging for runtime failures
+            _LOGGER.exception("Failed running color cycle for %s", entity_id)
+        finally:
+            tasks: dict[str, asyncio.Task] = hass.data[DOMAIN].setdefault("animation_tasks", {})
+            tasks.pop(entity_id, None)
+
+    task = hass.async_create_task(_run_cycle())
+    tasks: dict[str, asyncio.Task] = hass.data[DOMAIN].setdefault("animation_tasks", {})
+    tasks[entity_id] = task
 
 
 async def _async_activate_scene_service(hass: HomeAssistant, call: ServiceCall) -> None:
