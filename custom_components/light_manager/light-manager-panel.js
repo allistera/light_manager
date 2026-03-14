@@ -30,6 +30,8 @@ class LightManagerPanel extends LitElement {
     _sceneLibrarySearch: { state: true },
     _sceneLibraryPopupId: { state: true },
     _sceneLibraryColorIndex: { state: true },
+    _sceneLibraryAnimationInterval: { state: true },
+    _sceneLibraryAnimationRepeat: { state: true },
   };
 
   constructor() {
@@ -61,6 +63,8 @@ class LightManagerPanel extends LitElement {
     this._sceneLibrarySearch = "";
     this._sceneLibraryPopupId = null;
     this._sceneLibraryColorIndex = 0;
+    this._sceneLibraryAnimationInterval = 3;
+    this._sceneLibraryAnimationRepeat = true;
   }
 
   static styles = css`
@@ -1332,7 +1336,7 @@ class LightManagerPanel extends LitElement {
     })));
   }
 
-  _saveLibraryPresetAsScene(preset, colorIndex = 0) {
+  _saveLibraryPresetAsScene(preset, colorIndex = 0, animate = false) {
     const color = preset.palette[colorIndex] || preset.palette[0];
     if (!color) return;
     const [hue, saturation, lightness] = color;
@@ -1340,6 +1344,7 @@ class LightManagerPanel extends LitElement {
     const targetGroupIds = this._getAllSceneGroupIds();
     const targetLightIds = this._getLightIdsForGroupIds(targetGroupIds);
     const lightStates = {};
+    const lightAnimations = {};
 
     targetLightIds.forEach(entityId => {
       lightStates[entityId] = {
@@ -1348,14 +1353,24 @@ class LightManagerPanel extends LitElement {
         color_mode: "hs",
         brightness,
       };
+      if (animate) {
+        lightAnimations[entityId] = {
+          color_sequence: preset.palette.map(([stepHue, stepSaturation, stepLightness]) => ({
+            hs_color: [stepHue, stepSaturation],
+            brightness: Math.min(255, Math.max(10, Math.round(stepLightness / 100 * 255))),
+          })),
+          interval_seconds: this._sceneLibraryAnimationInterval,
+          repeat: this._sceneLibraryAnimationRepeat,
+        };
+      }
     });
 
     const newScene = {
       id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
-      name: preset.name,
+      name: animate ? `${preset.name} Animated` : preset.name,
       groupIds: targetGroupIds,
       lightStates,
-      lightAnimations: {},
+      lightAnimations,
       lightOverrides: {},
     };
 
@@ -1363,6 +1378,55 @@ class LightManagerPanel extends LitElement {
     this._saveScenesToHA();
     this._sceneLibraryPopupId = null;
     this._activeTab = "scenes";
+  }
+
+
+  _hsColorToHex(hsColor) {
+    if (!Array.isArray(hsColor) || hsColor.length < 2) return "#ffffff";
+    const h = ((Number(hsColor[0]) % 360) + 360) % 360;
+    const s = Math.max(0, Math.min(100, Number(hsColor[1]))) / 100;
+    const v = 1;
+    const c = v * s;
+    const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+    const m = v - c;
+    let r = 0;
+    let g = 0;
+    let b = 0;
+    if (h < 60) [r, g, b] = [c, x, 0];
+    else if (h < 120) [r, g, b] = [x, c, 0];
+    else if (h < 180) [r, g, b] = [0, c, x];
+    else if (h < 240) [r, g, b] = [0, x, c];
+    else if (h < 300) [r, g, b] = [x, 0, c];
+    else [r, g, b] = [c, 0, x];
+    const toHex = value => Math.round((value + m) * 255).toString(16).padStart(2, "0");
+    return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+  }
+
+  _hexToHsColor(hex) {
+    if (!hex || typeof hex !== "string") return [0, 0];
+    const cleaned = hex.replace("#", "");
+    const parsed = cleaned.length === 3
+      ? cleaned.split("").map(part => part + part).join("")
+      : cleaned;
+    if (!/^([0-9a-fA-F]{6})$/.test(parsed)) return [0, 0];
+
+    const r = parseInt(parsed.slice(0, 2), 16) / 255;
+    const g = parseInt(parsed.slice(2, 4), 16) / 255;
+    const b = parseInt(parsed.slice(4, 6), 16) / 255;
+    const max = Math.max(r, g, b);
+    const min = Math.min(r, g, b);
+    const delta = max - min;
+
+    let h = 0;
+    if (delta !== 0) {
+      if (max === r) h = 60 * (((g - b) / delta) % 6);
+      else if (max === g) h = 60 * (((b - r) / delta) + 2);
+      else h = 60 * (((r - g) / delta) + 4);
+    }
+    if (h < 0) h += 360;
+
+    const s = max === 0 ? 0 : (delta / max) * 100;
+    return [Math.round(h), Math.round(s)];
   }
 
   _normalizeScene(scene) {
@@ -1407,23 +1471,108 @@ class LightManagerPanel extends LitElement {
     return Array.isArray(effectList) ? effectList : [];
   }
 
+  _cleanupLightAnimationConfig(animation) {
+    const next = { ...(animation || {}) };
+
+    const transitionValue = Number(next.transition);
+    if (next.transition == null || next.transition === "" || !Number.isFinite(transitionValue) || transitionValue <= 0) {
+      delete next.transition;
+    } else {
+      next.transition = transitionValue;
+    }
+
+    if (!next.effect) {
+      delete next.effect;
+    }
+
+    const intervalValue = Number(next.interval_seconds);
+    if (next.interval_seconds == null || next.interval_seconds === "" || !Number.isFinite(intervalValue) || intervalValue <= 0) {
+      delete next.interval_seconds;
+    } else {
+      next.interval_seconds = Math.max(0.2, intervalValue);
+    }
+
+    if (typeof next.repeat !== "boolean") {
+      delete next.repeat;
+    }
+
+    if (Array.isArray(next.color_sequence)) {
+      const cleanedSteps = next.color_sequence.filter(step => (
+        step
+        && Array.isArray(step.hs_color)
+        && step.hs_color.length === 2
+        && step.hs_color.every(value => Number.isFinite(Number(value)))
+      )).map(step => {
+        const normalized = {
+          hs_color: [Number(step.hs_color[0]), Number(step.hs_color[1])],
+        };
+        const brightness = Number(step.brightness);
+        if (Number.isFinite(brightness)) {
+          normalized.brightness = Math.max(1, Math.min(255, Math.round(brightness)));
+        }
+        return normalized;
+      });
+
+      if (cleanedSteps.length > 0) {
+        next.color_sequence = cleanedSteps;
+      } else {
+        delete next.color_sequence;
+      }
+    } else {
+      delete next.color_sequence;
+    }
+
+    return next;
+  }
+
   _updateLightAnimation(sceneId, entityId, field, value) {
     this._scenes = this._scenes.map(scene => {
       if (scene.id !== sceneId) return scene;
       const currentAnimations = scene.lightAnimations || {};
       const currentAnimation = currentAnimations[entityId] || {};
-      const nextAnimation = { ...currentAnimation, [field]: value };
+      const nextAnimation = this._cleanupLightAnimationConfig({ ...currentAnimation, [field]: value });
 
-      const transitionValue = Number(nextAnimation.transition);
-      if (nextAnimation.transition == null || nextAnimation.transition === "" || !Number.isFinite(transitionValue) || transitionValue <= 0) {
-        delete nextAnimation.transition;
+      const nextAnimations = { ...currentAnimations };
+      if (Object.keys(nextAnimation).length === 0) {
+        delete nextAnimations[entityId];
       } else {
-        nextAnimation.transition = transitionValue;
+        nextAnimations[entityId] = nextAnimation;
       }
+      return { ...scene, lightAnimations: nextAnimations };
+    });
+    this._saveScenesToHA();
+  }
 
-      if (!nextAnimation.effect) {
-        delete nextAnimation.effect;
-      }
+  _addLightAnimationColor(sceneId, entityId, hexColor) {
+    const hsColor = this._hexToHsColor(hexColor);
+    this._scenes = this._scenes.map(scene => {
+      if (scene.id !== sceneId) return scene;
+      const currentAnimations = scene.lightAnimations || {};
+      const currentAnimation = currentAnimations[entityId] || {};
+      const currentSequence = Array.isArray(currentAnimation.color_sequence) ? currentAnimation.color_sequence : [];
+      const currentBrightness = currentAnimation?.brightness;
+      const nextAnimation = this._cleanupLightAnimationConfig({
+        ...currentAnimation,
+        color_sequence: [...currentSequence, {
+          hs_color: hsColor,
+          brightness: Number.isFinite(Number(currentBrightness)) ? Number(currentBrightness) : undefined,
+        }],
+      });
+
+      const nextAnimations = { ...currentAnimations, [entityId]: nextAnimation };
+      return { ...scene, lightAnimations: nextAnimations };
+    });
+    this._saveScenesToHA();
+  }
+
+  _removeLightAnimationColor(sceneId, entityId, index) {
+    this._scenes = this._scenes.map(scene => {
+      if (scene.id !== sceneId) return scene;
+      const currentAnimations = scene.lightAnimations || {};
+      const currentAnimation = currentAnimations[entityId] || {};
+      const currentSequence = Array.isArray(currentAnimation.color_sequence) ? currentAnimation.color_sequence : [];
+      const nextSequence = currentSequence.filter((_, seqIndex) => seqIndex !== index);
+      const nextAnimation = this._cleanupLightAnimationConfig({ ...currentAnimation, color_sequence: nextSequence });
 
       const nextAnimations = { ...currentAnimations };
       if (Object.keys(nextAnimation).length === 0) {
@@ -1706,6 +1855,8 @@ class LightManagerPanel extends LitElement {
                   <button class="scene-library-card" @click=${() => {
                     this._sceneLibraryPopupId = preset.id;
                     this._sceneLibraryColorIndex = 0;
+                    this._sceneLibraryAnimationInterval = 3;
+                    this._sceneLibraryAnimationRepeat = true;
                   }}>
                     <div class="scene-library-thumb" style="background:${preset.gradient}"></div>
                     <span class="scene-library-title">${preset.name}</span>
@@ -1857,7 +2008,7 @@ class LightManagerPanel extends LitElement {
         ${isEditingAnimations
           ? html`
               <div class="animation-editor">
-                <div class="animation-editor-title">Per-light scene/effect, transition, and brightness</div>
+                <div class="animation-editor-title">Per-light scene/effect, transition, brightness, and color animation</div>
                 ${sceneLightIds.length === 0
                   ? html`<div class="animation-empty">Add groups and lights first to configure animation.</div>`
                   : sceneLightIds.map(entityId => {
@@ -1866,6 +2017,7 @@ class LightManagerPanel extends LitElement {
                       const current = lightAnimations[entityId] || {};
                       const currentBrightness = lightOverrides[entityId]?.brightness;
                       const brightnessPct = currentBrightness != null ? Math.round(currentBrightness / 255 * 100) : "";
+                      const colorSequence = Array.isArray(current.color_sequence) ? current.color_sequence : [];
                       return html`
                         <div class="animation-row">
                           <span class="animation-light-name">${light?.name || entityId}</span>
@@ -1907,6 +2059,56 @@ class LightManagerPanel extends LitElement {
                                 this._updateLightOverrideBrightness(scene.id, entityId, e.target.value);
                               }}
                             />
+                          </div>
+                          <div class="animation-control">
+                            <span class="control-label">Animation colors</span>
+                            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
+                              ${colorSequence.map((step, stepIndex) => html`
+                                <button
+                                  class="scene-library-color"
+                                  style="background:${this._hsColorToHex(step.hs_color)}; width:24px; height:24px;"
+                                  title="Remove color ${stepIndex + 1}"
+                                  @click=${() => this._removeLightAnimationColor(scene.id, entityId, stepIndex)}
+                                ></button>
+                              `)}
+                              <input
+                                type="color"
+                                title="Add animation color"
+                                value="#ffffff"
+                                @change=${e => {
+                                  this._addLightAnimationColor(scene.id, entityId, e.target.value);
+                                  e.target.value = "#ffffff";
+                                }}
+                              />
+                            </div>
+                            <span class="control-label" style="margin-top:6px; font-size:0.75em;">
+                              Add at least 2 colors to animate this light.
+                            </span>
+                          </div>
+                          <div class="animation-control">
+                            <span class="control-label">Time between colors (seconds)</span>
+                            <input
+                              type="number"
+                              min="0.2"
+                              step="0.1"
+                              placeholder="2"
+                              .value=${current.interval_seconds != null ? String(current.interval_seconds) : ""}
+                              @change=${e => {
+                                this._updateLightAnimation(scene.id, entityId, "interval_seconds", e.target.value);
+                              }}
+                            />
+                          </div>
+                          <div class="animation-control">
+                            <label style="display:flex; gap:8px; align-items:center; margin-top:20px;">
+                              <input
+                                type="checkbox"
+                                .checked=${Boolean(current.repeat)}
+                                @change=${e => {
+                                  this._updateLightAnimation(scene.id, entityId, "repeat", e.target.checked);
+                                }}
+                              />
+                              <span class="control-label" style="margin:0;">Repeat indefinitely</span>
+                            </label>
                           </div>
                         </div>
                       `;
@@ -1996,8 +2198,33 @@ class LightManagerPanel extends LitElement {
                 ></button>
               `)}
             </div>
+            <div style="display:grid; gap:10px; margin:6px 0 12px;">
+              <label style="display:flex; align-items:center; gap:10px; color:#f1f3f6; font-size:0.9em;">
+                Time between colors (seconds)
+                <input
+                  type="number"
+                  min="0.2"
+                  step="0.1"
+                  style="max-width:100px;"
+                  .value=${String(this._sceneLibraryAnimationInterval)}
+                  @change=${e => {
+                    const next = Number(e.target.value);
+                    this._sceneLibraryAnimationInterval = Number.isFinite(next) && next > 0 ? next : 3;
+                  }}
+                />
+              </label>
+              <label style="display:flex; align-items:center; gap:10px; color:#f1f3f6; font-size:0.9em;">
+                <input
+                  type="checkbox"
+                  .checked=${this._sceneLibraryAnimationRepeat}
+                  @change=${e => { this._sceneLibraryAnimationRepeat = e.target.checked; }}
+                />
+                Repeat indefinitely
+              </label>
+            </div>
             <div class="scene-library-popup-actions">
-              <button @click=${() => this._saveLibraryPresetAsScene(preset, this._sceneLibraryColorIndex)}>Save to my scenes</button>
+              <button @click=${() => this._saveLibraryPresetAsScene(preset, this._sceneLibraryColorIndex)}>Save static scene</button>
+              <button @click=${() => this._saveLibraryPresetAsScene(preset, this._sceneLibraryColorIndex, true)}>Save animated scene</button>
               <button @click=${() => this._setLibraryPresetOnce(preset, this._sceneLibraryColorIndex)}>Set once</button>
             </div>
           </div>
