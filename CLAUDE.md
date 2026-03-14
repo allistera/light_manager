@@ -6,6 +6,30 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 Light Manager is a Home Assistant custom component (HACS-compatible) that provides a sidebar panel UI for managing smart lights, creating light groups, and defining/activating lighting scenes with color-cycling animations.
 
+## Panel Structure (RESTRUCTURE.MD)
+
+Three tabs:
+
+1. **Groups** — list of groups, each with associated lights (create/edit/delete groups, add/remove lights)
+2. **Light Groups** — card view of each group showing:
+   - Brightness slider (controls all lights in the group)
+   - On/Off toggle
+   - "My Scenes" tile grid (play ▶ / stop ⏹ / delete per scene)
+   - "Lights" list with per-light on/off toggles
+   - `+ Add Scene` button → opens dialog to pick a Library Scene → saves it to that group
+3. **Light Library** — tile grid of pre-defined light presets (gradient cards by category); clicking a card opens a popup with:
+   - Colour palette swatches
+   - Transition time (seconds between colours)
+   - Repeat indefinitely checkbox
+   - **Save to My Scenes** → group selector → saves animated scene to that group
+   - **Set Once** → group selector → applies colours immediately, no save
+   - **Stop All Scenes**
+
+### Data model
+- `Group → (has many) Lights`
+- `Group → (has many) Scenes` (scene.groupId links a scene to one group)
+- `Scene → (optionally) derived from a Library preset`
+
 ## Commands
 
 ### Python Linting
@@ -27,7 +51,7 @@ See `docs/local-development.md` for symlink-based hot reload setup and demo ligh
 
 ### Stack
 - **Backend:** Python 3.12+ (`custom_components/light_manager/__init__.py`) — HA integration lifecycle, WebSocket command handlers, service registration, animation tasks
-- **Frontend:** Lit Element 3.x (`custom_components/light_manager/light-manager-panel.js`) — single 2400+ line web component with three tabs: Groups, Scenes, Scene Library
+- **Frontend:** Lit Element 3.x (`custom_components/light_manager/light-manager-panel.js`) — single web component with three tabs: Groups, Light Groups, Light Library
 - **Communication:** Home Assistant WebSocket API
 - **Persistence:** Home Assistant Storage API (keyed by `STORAGE_KEY`)
 

@@ -16,16 +16,8 @@ class LightManagerPanel extends LitElement {
     _editingGroupId: { state: true },
     _editingGroupName: { state: true },
     _pickerValue: { state: true },
-    _newSceneName: { state: true },
-    _showCreateScene: { state: true },
-    _groupScenesByLightGroup: { state: true },
-    _addingGroupToScene: { state: true },
-    _editingSceneId: { state: true },
-    _editingSceneName: { state: true },
     _activatingSceneId: { state: true },
     _stoppingSceneId: { state: true },
-    _editingAnimationSceneId: { state: true },
-    _exportedSceneId: { state: true },
     _sceneServices: { state: true },
     _scenePopupSceneId: { state: true },
     _popupNewSceneName: { state: true },
@@ -55,16 +47,8 @@ class LightManagerPanel extends LitElement {
     this._editingGroupId = null;
     this._editingGroupName = "";
     this._pickerValue = "";
-    this._newSceneName = "";
-    this._showCreateScene = false;
-    this._groupScenesByLightGroup = true;
-    this._addingGroupToScene = null;
-    this._editingSceneId = null;
-    this._editingSceneName = "";
     this._activatingSceneId = null;
     this._stoppingSceneId = null;
-    this._editingAnimationSceneId = null;
-    this._exportedSceneId = null;
     this._sceneServices = {};
     this._sceneServicesLoaded = false;
     this._scenePopupSceneId = null;
@@ -1197,65 +1181,9 @@ class LightManagerPanel extends LitElement {
     });
   }
 
-  _createScene() {
-    const name = this._newSceneName.trim();
-    if (!name) return;
-    const newScene = {
-      id: Date.now().toString(),
-      name,
-      groupIds: [],
-      lightStates: {},
-      lightAnimations: {},
-      lightOverrides: {},
-    };
-    this._scenes = [...this._scenes, newScene];
-    this._saveScenesToHA();
-    this._newSceneName = "";
-    this._showCreateScene = false;
-  }
-
   _deleteScene(sceneId) {
     this._scenes = this._scenes.filter(s => s.id !== sceneId);
     this._saveScenesToHA();
-  }
-
-  _addGroupToScene(sceneId, groupId) {
-    if (!groupId) return;
-    this._scenes = this._scenes.map(s =>
-      s.id === sceneId && !s.groupIds.includes(groupId)
-        ? { ...s, groupIds: [...s.groupIds, groupId] }
-        : s
-    );
-    this._saveScenesToHA();
-  }
-
-  _removeGroupFromScene(sceneId, groupId) {
-    this._scenes = this._scenes.map(s =>
-      s.id === sceneId
-        ? { ...s, groupIds: s.groupIds.filter(id => id !== groupId) }
-        : s
-    );
-    this._saveScenesToHA();
-  }
-
-  _startEditScene(scene) {
-    this._editingSceneId = scene.id;
-    this._editingSceneName = scene.name;
-  }
-
-  _saveEditScene(sceneId) {
-    const name = this._editingSceneName.trim();
-    if (!name) return;
-    this._scenes = this._scenes.map(s =>
-      s.id === sceneId ? { ...s, name } : s
-    );
-    this._saveScenesToHA();
-    this._editingSceneId = null;
-  }
-
-  _cancelEditScene() {
-    this._editingSceneId = null;
-    this._editingSceneName = "";
   }
 
   // Capture current HA light states for every light across all groups in the scene
@@ -1504,10 +1432,6 @@ class LightManagerPanel extends LitElement {
     this._saveScenesToHA();
     this._sceneLibraryPopupId = null;
     this._sceneLibraryShowGroupSelect = null;
-    // Only switch to scenes tab when saving from library popup (not from add scene dialog)
-    if (!groupId) {
-      this._activeTab = "scenes";
-    }
   }
 
 
@@ -1796,12 +1720,6 @@ class LightManagerPanel extends LitElement {
     const serviceData = `type: button\ntap_action:\n  action: perform-action\n  perform_action: ${performAction}${dataBlock}\nname: ${scene.name}`;
     try {
       await navigator.clipboard.writeText(serviceData);
-      this._exportedSceneId = scene.id;
-      window.setTimeout(() => {
-        if (this._exportedSceneId === scene.id) {
-          this._exportedSceneId = null;
-        }
-      }, 2500);
     } catch (err) {
       console.error("Light Manager: failed to copy scene export", err);
     }
@@ -1823,21 +1741,15 @@ class LightManagerPanel extends LitElement {
             @click=${() => { this._activeTab = "light_groups"; }}
           >Light Groups (${this._groups.length})</button>
           <button
-            class="tab ${this._activeTab === "scenes" ? "active" : ""}"
-            @click=${() => { this._activeTab = "scenes"; }}
-          >Scenes (${this._scenes.length})</button>
-          <button
-            class="tab ${this._activeTab === "scene_library" ? "active" : ""}"
-            @click=${() => { this._activeTab = "scene_library"; }}
-          >Scene Library</button>
+            class="tab ${this._activeTab === "light_library" ? "active" : ""}"
+            @click=${() => { this._activeTab = "light_library"; }}
+          >Light Library</button>
         </div>
         ${this._activeTab === "groups"
           ? this._renderGroups()
           : this._activeTab === "light_groups"
             ? this._renderLightGroups()
-            : this._activeTab === "scenes"
-              ? this._renderScenes()
-              : this._renderSceneLibrary()}
+            : this._renderSceneLibrary()}
       </div>
       ${this._renderScenePopup()}
       ${this._renderSceneLibraryPopup()}
@@ -2351,355 +2263,6 @@ class LightManagerPanel extends LitElement {
           `}
     `;
   }
-
-  _renderScenes() {
-    return html`
-      <div class="groups-toolbar">
-        <button
-          class="btn-primary"
-          @click=${() => { this._showCreateScene = !this._showCreateScene; this._newSceneName = ""; }}
-        >+ Create Scene</button>
-      </div>
-
-      ${this._showCreateScene ? this._renderCreateSceneForm() : ""}
-
-      ${this._scenes.length === 0 && !this._showCreateScene
-        ? html`
-            <div class="empty-state">
-              <div class="empty-state-icon">🎬</div>
-              <div>No scenes yet. Create one to organise your groups.</div>
-            </div>
-          `
-        : html`
-            <div class="groups-list">
-              ${this._renderScenesGroupedByLightGroup()}
-            </div>
-          `}
-    `;
-  }
-
-  _renderScenesGroupedByLightGroup() {
-    const groupedSections = this._groups
-      .map(group => ({
-        id: group.id,
-        name: group.name,
-        scenes: this._scenes.filter(scene => {
-          // Support both new groupId and legacy groupIds
-          if (scene.groupId) return scene.groupId === group.id;
-          return (scene.groupIds || []).includes(group.id);
-        }),
-      }))
-      .filter(section => section.scenes.length > 0);
-
-    const ungroupedScenes = this._scenes.filter(scene => {
-      if (scene.groupId) return false;
-      return !scene.groupIds || scene.groupIds.length === 0;
-    });
-    if (ungroupedScenes.length > 0) {
-      groupedSections.push({
-        id: "__ungrouped__",
-        name: "Ungrouped Scenes",
-        scenes: ungroupedScenes,
-      });
-    }
-
-    return groupedSections.map(section => html`
-      <details class="scene-group-section">
-        <summary>
-          <span>${section.name}</span>
-          <span class="scene-group-count">${section.scenes.length} scene${section.scenes.length === 1 ? "" : "s"}</span>
-        </summary>
-        <div class="scene-group-content">
-          ${section.scenes.map(scene => this._renderScene(scene))}
-        </div>
-      </details>
-    `);
-  }
-
-  _renderCreateSceneForm() {
-    return html`
-      <div class="create-group-form">
-        <input
-          type="text"
-          placeholder="Scene name"
-          .value=${this._newSceneName}
-          @input=${e => { this._newSceneName = e.target.value; }}
-          @keydown=${e => { if (e.key === "Enter") this._createScene(); }}
-        />
-        <button class="btn-primary" @click=${this._createScene}>Create</button>
-        <button
-          class="btn-secondary"
-          @click=${() => { this._showCreateScene = false; this._newSceneName = ""; }}
-        >Cancel</button>
-      </div>
-    `;
-  }
-
-  _renderScene(scene) {
-    // Support both new groupId and legacy groupIds
-    const groupIdList = scene.groupId
-      ? [scene.groupId]
-      : (scene.groupIds || []);
-    const sceneGroups = groupIdList
-      .map(id => this._groups.find(g => g.id === id))
-      .filter(Boolean);
-
-    const isEditing = this._editingSceneId === scene.id;
-    const isAddingGroup = this._addingGroupToScene === scene.id;
-    const availableGroups = this._groups.filter(g => !groupIdList.includes(g.id));
-    const isActivating = this._activatingSceneId === scene.id;
-    const lightStates = scene.lightStates || {};
-    const lightAnimations = scene.lightAnimations || {};
-    const lightOverrides = scene.lightOverrides || {};
-    const configuredLightIds = this._getConfiguredSceneLightIds(scene);
-    const hasStates = configuredLightIds.length > 0;
-    const sceneServiceName = this._getSceneServiceName(scene.id);
-    const isEditingAnimations = this._editingAnimationSceneId === scene.id;
-    const sceneLightIds = this._getSceneLightIds(scene);
-
-    return html`
-      <div class="group-card">
-        <div class="group-card-header">
-          ${isEditing
-            ? html`
-                <input
-                  class="edit-input"
-                  type="text"
-                  .value=${this._editingSceneName}
-                  @input=${e => { this._editingSceneName = e.target.value; }}
-                  @keydown=${e => { if (e.key === "Enter") this._saveEditScene(scene.id); }}
-                />
-                <button class="btn-primary" @click=${() => this._saveEditScene(scene.id)}>Save</button>
-                <button class="btn-secondary" @click=${this._cancelEditScene}>Cancel</button>
-              `
-            : html`
-                <span class="group-name">${scene.name}</span>
-                <div class="group-actions">
-                  <button
-                    class="btn-icon"
-                    title="Open Hue-style popup"
-                    @click=${() => { this._scenePopupSceneId = scene.id; }}
-                  >🪟</button>
-                  <button
-                    class="btn-icon"
-                    title="Capture current light states into this scene"
-                    @click=${() => this._captureSceneState(scene.id)}
-                  >📷</button>
-                  <button
-                    class="btn-icon"
-                    title="Copy dashboard button config"
-                    @click=${() => this._copySceneExport(scene)}
-                  >📤</button>
-                  <button
-                    class="btn-icon"
-                    title="Rename scene"
-                    @click=${() => this._startEditScene(scene)}
-                  >✏️</button>
-                  <button
-                    class="btn-icon"
-                    title="Configure per-light scene/effect and brightness"
-                    @click=${() => {
-                      this._editingAnimationSceneId = isEditingAnimations ? null : scene.id;
-                    }}
-                  >🎛️</button>
-                  <button
-                    class="btn-icon danger"
-                    title="Delete scene"
-                    @click=${() => this._deleteScene(scene.id)}
-                  >🗑️</button>
-                </div>
-              `}
-        </div>
-
-        <div class="group-lights">
-          ${sceneGroups.length === 0
-            ? html`<div class="no-lights-msg">No groups in this scene yet.</div>`
-            : sceneGroups.map(
-                group => html`
-                  <div class="group-light-row">
-                    <span class="light-name">${group.name}</span>
-                    <div class="scene-lights-preview">
-                      ${this._renderGroupStatePreview(group, lightStates, lightOverrides, lightAnimations)}
-                    </div>
-                    <button
-                      class="remove-btn"
-                      title="Remove from scene"
-                      @click=${() => this._removeGroupFromScene(scene.id, group.id)}
-                    >&times;</button>
-                  </div>
-                `
-              )}
-        </div>
-
-        ${isEditingAnimations
-          ? html`
-              <div class="animation-editor">
-                <div class="animation-editor-title">Per-light scene/effect, transition, brightness, and color animation</div>
-                ${sceneLightIds.length === 0
-                  ? html`<div class="animation-empty">Add groups and lights first to configure animation.</div>`
-                  : sceneLightIds.map(entityId => {
-                      const light = this._lights.find(l => l.entityId === entityId);
-                      const options = this._getLightAnimationOptions(entityId);
-                      const current = lightAnimations[entityId] || {};
-                      const currentBrightness = lightOverrides[entityId]?.brightness;
-                      const brightnessPct = currentBrightness != null ? Math.round(currentBrightness / 255 * 100) : "";
-                      const colorSequence = Array.isArray(current.color_sequence) ? current.color_sequence : [];
-                      return html`
-                        <div class="animation-row">
-                          <span class="animation-light-name">${light?.name || entityId}</span>
-                          <div class="animation-control">
-                            <span class="control-label">Scene / effect</span>
-                            <select
-                              .value=${current.effect || ""}
-                              @change=${e => {
-                                this._updateLightAnimation(scene.id, entityId, "effect", e.target.value);
-                              }}
-                            >
-                              <option value="">Use light default</option>
-                              ${options.map(option => html`<option value="${option}">${option}</option>`)}
-                            </select>
-                          </div>
-                          <div class="animation-control">
-                            <span class="control-label">Transition (seconds)</span>
-                            <input
-                              type="number"
-                              min="0.1"
-                              step="0.1"
-                              placeholder="None"
-                              .value=${current.transition != null ? String(current.transition) : ""}
-                              @change=${e => {
-                                this._updateLightAnimation(scene.id, entityId, "transition", e.target.value);
-                              }}
-                            />
-                          </div>
-                          <div class="animation-control">
-                            <span class="control-label">Brightness (%)</span>
-                            <input
-                              type="number"
-                              min="1"
-                              max="100"
-                              step="1"
-                              placeholder="Use captured"
-                              .value=${String(brightnessPct)}
-                              @change=${e => {
-                                this._updateLightOverrideBrightness(scene.id, entityId, e.target.value);
-                              }}
-                            />
-                          </div>
-                          <div class="animation-control">
-                            <span class="control-label">Animation colors</span>
-                            <div style="display:flex; gap:6px; align-items:center; flex-wrap:wrap;">
-                              ${colorSequence.map((step, stepIndex) => html`
-                                <button
-                                  class="scene-library-color"
-                                  style="background:${this._hsColorToHex(step.hs_color)}; width:24px; height:24px;"
-                                  title="Remove color ${stepIndex + 1}"
-                                  @click=${() => this._removeLightAnimationColor(scene.id, entityId, stepIndex)}
-                                ></button>
-                              `)}
-                              <input
-                                type="color"
-                                title="Add animation color"
-                                value="#ffffff"
-                                @change=${e => {
-                                  this._addLightAnimationColor(scene.id, entityId, e.target.value);
-                                  e.target.value = "#ffffff";
-                                }}
-                              />
-                            </div>
-                            <span class="control-label" style="margin-top:6px; font-size:0.75em;">
-                              Add at least 2 colors to animate this light.
-                            </span>
-                          </div>
-                          <div class="animation-control">
-                            <span class="control-label">Time between colors (seconds)</span>
-                            <input
-                              type="number"
-                              min="0.2"
-                              step="0.1"
-                              placeholder="2"
-                              .value=${current.interval_seconds != null ? String(current.interval_seconds) : ""}
-                              @change=${e => {
-                                this._updateLightAnimation(scene.id, entityId, "interval_seconds", e.target.value);
-                              }}
-                            />
-                          </div>
-                          <div class="animation-control">
-                            <label style="display:flex; gap:8px; align-items:center; margin-top:20px;">
-                              <input
-                                type="checkbox"
-                                .checked=${Boolean(current.repeat)}
-                                @change=${e => {
-                                  this._updateLightAnimation(scene.id, entityId, "repeat", e.target.checked);
-                                }}
-                              />
-                              <span class="control-label" style="margin:0;">Repeat indefinitely</span>
-                            </label>
-                          </div>
-                        </div>
-                      `;
-                    })}
-                ${this._exportedSceneId === scene.id
-                  ? html`<span class="export-hint">Copied dashboard button YAML to clipboard.</span>`
-                  : ""}
-              </div>
-            `
-          : ""}
-
-        <div class="group-footer">
-          <button
-            class="btn-activate"
-            ?disabled=${!hasStates || isActivating}
-            @click=${() => this._activateScene(scene.id)}
-          >${isActivating ? "Testing..." : "▶ Test Scene"}</button>
-          ${!hasStates && sceneGroups.length > 0
-            ? html`<span class="capture-hint">Capture states and/or configure per-light scene/effect first</span>`
-            : ""}
-          <div class="scene-summary">
-            ${configuredLightIds.length > 0
-              ? html`<span class="scene-config-pill">${configuredLightIds.length} configured</span>`
-              : ""}
-            ${sceneServiceName
-              ? html`
-                  <span class="scene-service-hint">
-                    Service: <code>light_manager.${sceneServiceName}</code>
-                  </span>
-                `
-              : ""}
-          </div>
-          ${isAddingGroup
-            ? html`
-                <select
-                  @change=${e => {
-                    if (e.target.value) {
-                      this._addGroupToScene(scene.id, e.target.value);
-                      e.target.value = "";
-                    }
-                  }}
-                >
-                  <option value="">Select a group...</option>
-                  ${availableGroups.map(g => html`<option value="${g.id}">${g.name}</option>`)}
-                </select>
-                <button
-                  class="btn-secondary"
-                  @click=${() => { this._addingGroupToScene = null; }}
-                >Done</button>
-              `
-            : html`
-                <button
-                  class="btn-secondary"
-                  ?disabled=${availableGroups.length === 0}
-                  @click=${() => { this._addingGroupToScene = scene.id; }}
-                >+ Add Group</button>
-                ${availableGroups.length === 0 && this._groups.length > 0
-                  ? html`<span style="font-size:0.85em;color:var(--secondary-text-color)">All groups are already in this scene.</span>`
-                  : ""}
-              `}
-        </div>
-      </div>
-    `;
-  }
-
 
   _renderSceneLibraryPopup() {
     if (!this._sceneLibraryPopupId) return "";
