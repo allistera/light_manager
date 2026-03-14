@@ -23,6 +23,7 @@ class LightManagerPanel extends LitElement {
     _editingSceneId: { state: true },
     _editingSceneName: { state: true },
     _activatingSceneId: { state: true },
+    _stoppingSceneId: { state: true },
     _editingAnimationSceneId: { state: true },
     _exportedSceneId: { state: true },
     _sceneServices: { state: true },
@@ -56,6 +57,7 @@ class LightManagerPanel extends LitElement {
     this._editingSceneId = null;
     this._editingSceneName = "";
     this._activatingSceneId = null;
+    this._stoppingSceneId = null;
     this._editingAnimationSceneId = null;
     this._exportedSceneId = null;
     this._sceneServices = {};
@@ -681,6 +683,14 @@ class LightManagerPanel extends LitElement {
       margin: 0;
       color: #ffffff;
       font-weight: 700;
+    }
+
+    .scene-library-popup-close {
+      position: absolute;
+      top: 12px;
+      right: 12px;
+      color: #fff;
+      z-index: 2;
     }
 
     .scene-library-popup-body {
@@ -1687,6 +1697,20 @@ class LightManagerPanel extends LitElement {
     }
   }
 
+  async _stopScene(sceneId = null) {
+    if (!this.hass) return;
+
+    this._stoppingSceneId = sceneId || "__all__";
+    try {
+      const data = sceneId ? { scene_id: sceneId } : {};
+      await this.hass.callService("light_manager", "stop_scene", data);
+    } catch (err) {
+      console.error("Light Manager: failed to stop scene animations", err);
+    } finally {
+      this._stoppingSceneId = null;
+    }
+  }
+
   async _copySceneExport(scene) {
     const sceneService = this._getSceneServiceName(scene.id);
     const performAction = sceneService ? `light_manager.${sceneService}` : "light_manager.activate_scene";
@@ -2273,7 +2297,7 @@ class LightManagerPanel extends LitElement {
         <div class="scene-library-popup" @click=${e => { e.stopPropagation(); }}>
           <div class="scene-library-popup-image" style="background:${preset.gradient}">
             <h3 class="scene-library-popup-name">${preset.name}</h3>
-            <button class="btn-icon scene-popup-close" title="Close" style="position:absolute;top:12px;right:12px;color:#fff" @click=${() => { this._sceneLibraryPopupId = null; }}>✕</button>
+            <button class="btn-icon scene-popup-close scene-library-popup-close" title="Close" @click=${() => { this._sceneLibraryPopupId = null; }}>✕</button>
           </div>
           <div class="scene-library-popup-body">
             <div class="scene-library-palette">
@@ -2314,6 +2338,7 @@ class LightManagerPanel extends LitElement {
               <button @click=${() => this._saveLibraryPresetAsScene(preset, this._sceneLibraryColorIndex)}>Save static scene</button>
               <button @click=${() => this._saveLibraryPresetAsScene(preset, this._sceneLibraryColorIndex, true)}>Save animated scene</button>
               <button @click=${() => this._setLibraryPresetOnce(preset, this._sceneLibraryColorIndex)}>Set once</button>
+              <button @click=${() => this._stopScene(null)} ?disabled=${this._stoppingSceneId === "__all__"}>${this._stoppingSceneId === "__all__" ? "Stopping..." : "Stop scenes"}</button>
             </div>
           </div>
         </div>
@@ -2358,6 +2383,7 @@ class LightManagerPanel extends LitElement {
               <button ?disabled=${!hasStates || isActivating} @click=${() => this._activateScene(scene.id)}>${isActivating ? "Testing..." : "▶ Test Scene"}</button>
               <button @click=${() => this._captureSceneState(scene.id)}>📸 Capture</button>
               <button @click=${() => this._copySceneExport(scene)}>📋 Copy YAML</button>
+              <button class="btn-danger" ?disabled=${this._stoppingSceneId === scene.id} @click=${() => this._stopScene(scene.id)}>${this._stoppingSceneId === scene.id ? "Stopping..." : "⏹ Stop Scene"}</button>
             </div>
             ${!hasStates && sceneGroups.length > 0
               ? html`<span class="capture-hint">Capture states and/or configure per-light scene/effect first</span>`
