@@ -20,6 +20,7 @@ SCENES_STORAGE_KEY = f"{DOMAIN}_scenes"
 STORAGE_VERSION = 1
 
 SERVICE_ACTIVATE_SCENE = "activate_scene"
+SERVICE_STOP_SCENE = "stop_scene"
 SERVICE_EXPORT_SCENES = "export_scenes"
 
 
@@ -59,7 +60,7 @@ async def async_register_frontend_panel(hass: HomeAssistant) -> None:
         config={
             "_panel_custom": {
                 "name": "light-manager-panel",
-                "module_url": "/light_manager_static/light-manager-panel.js?v=11",
+                "module_url": "/light_manager_static/light-manager-panel.js?v=12",
             }
         },
         require_admin=False,
@@ -101,6 +102,22 @@ def _register_services(hass: HomeAssistant) -> None:
             DOMAIN,
             SERVICE_EXPORT_SCENES,
             _handle_export_scenes,
+        )
+
+    if not hass.services.has_service(DOMAIN, SERVICE_STOP_SCENE):
+        async def _handle_stop_scene(call: ServiceCall) -> None:
+            await _async_stop_scene_service(hass, call)
+
+        hass.services.async_register(
+            DOMAIN,
+            SERVICE_STOP_SCENE,
+            _handle_stop_scene,
+            schema=vol.Schema(
+                {
+                    vol.Optional("scene_id"): str,
+                    vol.Optional("scene_name"): str,
+                }
+            ),
         )
 
 
@@ -398,6 +415,71 @@ async def _async_activate_scene_service(hass: HomeAssistant, call: ServiceCall) 
         return
 
     await _async_apply_scene(hass, scene)
+
+
+def _resolve_scene_by_reference(
+    scenes: list[dict],
+    scene_id: str | None,
+    scene_name: str | None,
+) -> dict | None:
+    """Return the first scene matching an ID or name reference."""
+    if scene_id:
+        return next(
+            (
+                scene
+                for scene in scenes
+                if isinstance(scene, dict) and str(scene.get("id")) == str(scene_id)
+            ),
+            None,
+        )
+
+    if scene_name:
+        return next(
+            (
+                scene
+                for scene in scenes
+                if isinstance(scene, dict) and str(scene.get("name")) == str(scene_name)
+            ),
+            None,
+        )
+
+    return None
+
+
+async def _async_stop_scene_service(hass: HomeAssistant, call: ServiceCall) -> None:
+    """Stop running light animations for a scene (or all managed lights)."""
+    scene_id = call.data.get("scene_id")
+    scene_name = call.data.get("scene_name")
+
+    if scene_id or scene_name:
+        scenes = await _async_load_scenes(hass)
+        scene = _resolve_scene_by_reference(scenes, scene_id, scene_name)
+        if not scene:
+            _LOGGER.warning(
+                "Requested scene not found for stop: id=%s name=%s",
+                scene_id,
+                scene_name,
+            )
+            return
+
+        light_states = _get_scene_mapping(scene, "lightStates", "light_states")
+        light_overrides = _get_scene_mapping(scene, "lightOverrides", "light_overrides")
+        light_animations = _get_scene_mapping(scene, "lightAnimations", "light_animations")
+        scene_light_ids = {
+            entity_id
+            for entity_id in (
+                set(light_states.keys())
+                | set(light_overrides.keys())
+                | set(light_animations.keys())
+            )
+            if entity_id
+        }
+    else:
+        tasks: dict[str, asyncio.Task] = hass.data[DOMAIN].setdefault("animation_tasks", {})
+        scene_light_ids = set(tasks.keys())
+
+    for entity_id in scene_light_ids:
+        _cancel_animation_task(hass, entity_id)
 
 
 async def _async_export_scenes_service(hass: HomeAssistant, call: ServiceCall) -> None:
