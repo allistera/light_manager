@@ -1,0 +1,31 @@
+activate_scene:
+  name: Activate Scene
+  description: Activate a Light Manager scene, applying all configured light states and animations.
+  fields:
+    scene_id:
+      name: Scene ID
+      description: The ID of the scene to activate.
+      example: "1234567890"
+      selector:
+        text:
+    scene_name:
+      name: Scene Name
+      description: The name of the scene to activate (used as an alternative to scene_id).
+      example: "Relax"
+      selector:
+        text:
+
+stop_scene:
+  name: Stop Scene
+  description: Stop animations for a specific scene, or all scenes if no scene_id is provided.
+  fields:
+    scene_id:
+      name: Scene ID
+      description: The ID of the scene whose animations should be stopped. Omit to stop all animations.
+      example: "1234567890"
+      selector:
+        text:
+
+export_scenes:
+  name: Export Scenes
+  description: Export all scenes to the Home Assistant log for debugging or migration purposes.

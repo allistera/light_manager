@@ -5,7 +5,7 @@
   "documentation": "https://github.com/allistera/light_manager",
   "issue_tracker": "https://github.com/allistera/light_manager/issues",
   "codeowners": ["@allistera"],
-  "dependencies": ["frontend"],
+  "dependencies": ["frontend", "http"],
   "requirements": [],
   "iot_class": "calculated",
   "integration_type": "system"
