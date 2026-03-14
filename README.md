@@ -1,7 +1,5 @@
 # Light Manager for Home Assistant
 
-[![Lint & Validation](../../actions/workflows/lint.yml/badge.svg)](../../actions/workflows/lint.yml)
-
 A HACS-compatible custom component that displays all currently "on" lights in a sidebar panel.
 
 ## Features
@@ -55,6 +53,8 @@ This repository includes a GitHub Actions workflow (`.github/workflows/lint.yml`
 - HACS compatibility checks with `hacs/action`
 
 To enforce this before merge, set the `Lint & Validation` workflow checks as required in your branch protection rules.
+
+Dependency updates are automated with Dependabot (`.github/dependabot.yml`) for GitHub Actions and pip definitions so workflow/tooling dependencies stay current.
 
 ## Development
 
