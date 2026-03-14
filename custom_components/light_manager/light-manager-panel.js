@@ -34,6 +34,11 @@ class LightManagerPanel extends LitElement {
     _sceneLibraryColorIndex: { state: true },
     _sceneLibraryAnimationInterval: { state: true },
     _sceneLibraryAnimationRepeat: { state: true },
+    _showAddSceneToGroupId: { state: true },
+    _addSceneDialogStep: { state: true },
+    _addSceneLibrarySelection: { state: true },
+    _sceneLibraryShowGroupSelect: { state: true },
+    _sceneLibrarySaveAnimated: { state: true },
   };
 
   constructor() {
@@ -69,6 +74,11 @@ class LightManagerPanel extends LitElement {
     this._sceneLibraryColorIndex = 0;
     this._sceneLibraryAnimationInterval = 3;
     this._sceneLibraryAnimationRepeat = true;
+    this._showAddSceneToGroupId = null;
+    this._addSceneDialogStep = "type";
+    this._addSceneLibrarySelection = null;
+    this._sceneLibraryShowGroupSelect = null;
+    this._sceneLibrarySaveAnimated = false;
   }
 
   static styles = css`
@@ -1001,6 +1011,28 @@ class LightManagerPanel extends LitElement {
         height: 180px;
       }
     }
+
+    /* New styles for Light Groups tab */
+    .group-brightness-bar { display:flex; align-items:center; gap:10px; padding:10px 12px; border-bottom:1px solid var(--divider-color); }
+    .group-brightness-bar input[type="range"] { flex:1; accent-color:var(--primary-color); }
+    .group-section-label { font-size:0.75em; text-transform:uppercase; letter-spacing:0.1em; color:var(--secondary-text-color); font-weight:600; padding:8px 12px 4px; }
+    .scene-tiles { display:grid; grid-template-columns:repeat(auto-fill,minmax(160px,1fr)); gap:8px; padding:8px 12px; }
+    .scene-tile { background:var(--secondary-background-color); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:6px; }
+    .scene-tile-name { font-size:0.9em; font-weight:500; color:var(--primary-text-color); overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+    .scene-tile-actions { display:flex; gap:4px; }
+    .light-toggle-btn { background:var(--secondary-background-color); border:1px solid var(--divider-color); border-radius:20px; padding:2px 10px; font-size:0.8em; cursor:pointer; color:var(--primary-text-color); }
+    .light-toggle-btn.on { background:var(--primary-color); color:white; border-color:var(--primary-color); }
+    .add-scene-dialog { width:min(480px,100%); border-radius:16px; background:var(--card-background-color); box-shadow:0 16px 40px rgba(0,0,0,0.4); overflow:hidden; color:var(--primary-text-color); }
+    .add-scene-dialog-header { display:flex; justify-content:space-between; align-items:center; padding:16px 20px; border-bottom:1px solid var(--divider-color); }
+    .add-scene-dialog-title { font-size:1.1em; font-weight:600; margin:0; }
+    .add-scene-dialog-body { padding:16px 20px 20px; }
+    .add-scene-type-btn { width:100%; padding:14px 16px; background:var(--secondary-background-color); border:1px solid var(--divider-color); border-radius:10px; text-align:left; cursor:pointer; font-size:0.95em; color:var(--primary-text-color); display:flex; justify-content:space-between; align-items:center; }
+    .add-scene-type-btn:hover { background:var(--divider-color); }
+    .library-mini-grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(140px,1fr)); gap:8px; max-height:400px; overflow-y:auto; }
+    .group-select-row { display:flex; flex-wrap:wrap; gap:8px; }
+    .group-select-btn { padding:8px 16px; border-radius:999px; background:var(--secondary-background-color); border:1px solid var(--divider-color); cursor:pointer; font-size:0.9em; color:var(--primary-text-color); }
+    .group-select-btn:hover { background:var(--primary-color); color:white; border-color:var(--primary-color); }
+    .all-groups-on-btn { background:var(--success-color,#4caf50); color:white; }
   `;
 
   updated(changedProps) {
@@ -1232,7 +1264,11 @@ class LightManagerPanel extends LitElement {
     if (!scene || !this.hass) return;
 
     const lightIds = new Set();
-    scene.groupIds.forEach(groupId => {
+    // Support both legacy groupIds array and new single groupId
+    const groupIdList = scene.groupId
+      ? [scene.groupId]
+      : (scene.groupIds || []);
+    groupIdList.forEach(groupId => {
       const group = this._groups.find(g => g.id === groupId);
       if (group) group.lightIds.forEach(id => lightIds.add(id));
     });
@@ -1286,6 +1322,12 @@ class LightManagerPanel extends LitElement {
     return [...sceneLightIds];
   }
 
+  _getLightIdsForGroup(groupId) {
+    const group = this._groups.find(g => g.id === groupId);
+    if (!group) return [];
+    return [...group.lightIds];
+  }
+
   _buildPresetLightStates(groupIds, presetType) {
     const lightIds = this._getLightIdsForGroupIds(groupIds);
     const lightStates = {};
@@ -1316,12 +1358,17 @@ class LightManagerPanel extends LitElement {
     let lightAnimations = {};
     let lightOverrides = {};
 
+    // Support both legacy groupIds and new groupId
+    const groupIdList = baseScene.groupId
+      ? [baseScene.groupId]
+      : (baseScene.groupIds || []);
+
     if (mode === "duplicate") {
       lightStates = { ...(baseScene.lightStates || {}) };
       lightAnimations = { ...(baseScene.lightAnimations || {}) };
       lightOverrides = { ...(baseScene.lightOverrides || {}) };
     } else if (mode === "capture") {
-      const sceneLightIds = this._getLightIdsForGroupIds(baseScene.groupIds || []);
+      const sceneLightIds = this._getLightIdsForGroupIds(groupIdList);
       sceneLightIds.forEach(entityId => {
         const entityState = this.hass?.states?.[entityId];
         if (!entityState) return;
@@ -1336,13 +1383,13 @@ class LightManagerPanel extends LitElement {
         lightStates[entityId] = captured;
       });
     } else {
-      lightStates = this._buildPresetLightStates(baseScene.groupIds || [], mode);
+      lightStates = this._buildPresetLightStates(groupIdList, mode);
     }
 
     const newScene = {
       id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       name,
-      groupIds: [...(baseScene.groupIds || [])],
+      groupIds: [...groupIdList],
       lightStates,
       lightAnimations,
       lightOverrides,
@@ -1382,13 +1429,15 @@ class LightManagerPanel extends LitElement {
     return this._groups.map(group => group.id);
   }
 
-  async _setLibraryPresetOnce(preset, colorIndex = 0) {
+  async _setLibraryPresetOnce(preset, colorIndex = 0, groupId = null) {
     const color = preset.palette[colorIndex] || preset.palette[0];
     if (!color || !this.hass) return;
     const [hue, saturation, lightness] = color;
     const brightness = Math.min(255, Math.max(10, Math.round(lightness / 100 * 255)));
     const saturationPct = Math.min(100, Math.max(0, saturation));
-    const targetLightIds = this._getLightIdsForGroupIds(this._getAllSceneGroupIds());
+    const targetLightIds = groupId
+      ? this._getLightIdsForGroup(groupId)
+      : this._getLightIdsForGroupIds(this._getAllSceneGroupIds());
     if (targetLightIds.length === 0) return;
 
     await Promise.all(targetLightIds.map(entityId => this.hass.callService("light", "turn_on", {
@@ -1403,13 +1452,22 @@ class LightManagerPanel extends LitElement {
     }
   }
 
-  _saveLibraryPresetAsScene(preset, colorIndex = 0, animate = false) {
+  _saveLibraryPresetAsScene(preset, colorIndex = 0, animate = false, groupId = null) {
     const color = preset.palette[colorIndex] || preset.palette[0];
     if (!color) return;
     const [hue, saturation, lightness] = color;
     const brightness = Math.min(255, Math.max(10, Math.round(lightness / 100 * 255)));
-    const targetGroupIds = this._getAllSceneGroupIds();
-    const targetLightIds = this._getLightIdsForGroupIds(targetGroupIds);
+
+    let targetGroupIds;
+    let targetLightIds;
+    if (groupId) {
+      targetGroupIds = [groupId];
+      targetLightIds = this._getLightIdsForGroup(groupId);
+    } else {
+      targetGroupIds = this._getAllSceneGroupIds();
+      targetLightIds = this._getLightIdsForGroupIds(targetGroupIds);
+    }
+
     const lightStates = {};
     const lightAnimations = {};
 
@@ -1435,6 +1493,7 @@ class LightManagerPanel extends LitElement {
     const newScene = {
       id: `${Date.now()}-${Math.floor(Math.random() * 1000)}`,
       name: animate ? `${preset.name} Animated` : preset.name,
+      groupId: groupId || null,
       groupIds: targetGroupIds,
       lightStates,
       lightAnimations,
@@ -1444,7 +1503,11 @@ class LightManagerPanel extends LitElement {
     this._scenes = [...this._scenes, newScene];
     this._saveScenesToHA();
     this._sceneLibraryPopupId = null;
-    this._activeTab = "scenes";
+    this._sceneLibraryShowGroupSelect = null;
+    // Only switch to scenes tab when saving from library popup (not from add scene dialog)
+    if (!groupId) {
+      this._activeTab = "scenes";
+    }
   }
 
 
@@ -1497,18 +1560,33 @@ class LightManagerPanel extends LitElement {
   }
 
   _normalizeScene(scene) {
-    return {
+    // Migrate legacy groupIds array to single groupId
+    let groupId = scene.groupId;
+    let groupIds = scene.groupIds;
+    if (!groupId && Array.isArray(groupIds) && groupIds.length > 0) {
+      groupId = groupIds[0];
+    }
+    const normalized = {
       ...scene,
-      groupIds: Array.isArray(scene.groupIds) ? scene.groupIds : [],
+      groupId: groupId || null,
       lightStates: scene.lightStates || {},
       lightAnimations: scene.lightAnimations || {},
       lightOverrides: scene.lightOverrides || {},
     };
+    // Keep groupIds for backward compatibility but remove old-style array if migrating
+    if (!normalized.groupIds) {
+      normalized.groupIds = groupId ? [groupId] : [];
+    }
+    return normalized;
   }
 
   _getSceneLightIds(scene) {
     const sceneLightIds = new Set();
-    scene.groupIds.forEach(groupId => {
+    // Support both groupId (single) and groupIds (legacy array)
+    const groupIdList = scene.groupId
+      ? [scene.groupId]
+      : (scene.groupIds || []);
+    groupIdList.forEach(groupId => {
       const group = this._groups.find(g => g.id === groupId);
       if (group) {
         group.lightIds.forEach(lightId => sceneLightIds.add(lightId));
@@ -1741,6 +1819,10 @@ class LightManagerPanel extends LitElement {
             @click=${() => { this._activeTab = "groups"; }}
           >Groups (${this._groups.length})</button>
           <button
+            class="tab ${this._activeTab === "light_groups" ? "active" : ""}"
+            @click=${() => { this._activeTab = "light_groups"; }}
+          >Light Groups (${this._groups.length})</button>
+          <button
             class="tab ${this._activeTab === "scenes" ? "active" : ""}"
             @click=${() => { this._activeTab = "scenes"; }}
           >Scenes (${this._scenes.length})</button>
@@ -1751,12 +1833,15 @@ class LightManagerPanel extends LitElement {
         </div>
         ${this._activeTab === "groups"
           ? this._renderGroups()
-          : this._activeTab === "scenes"
-            ? this._renderScenes()
-            : this._renderSceneLibrary()}
+          : this._activeTab === "light_groups"
+            ? this._renderLightGroups()
+            : this._activeTab === "scenes"
+              ? this._renderScenes()
+              : this._renderSceneLibrary()}
       </div>
       ${this._renderScenePopup()}
       ${this._renderSceneLibraryPopup()}
+      ${this._renderAddSceneDialog()}
     `;
   }
 
@@ -1904,6 +1989,322 @@ class LightManagerPanel extends LitElement {
     `;
   }
 
+  // ── Light Groups Tab ─────────────────────────────────────────────────────
+
+  _renderLightGroups() {
+    if (this._groups.length === 0) {
+      return html`
+        <div class="empty-state">
+          <div class="empty-state-icon">💡</div>
+          <div>No groups yet. Create groups in the Groups tab first.</div>
+        </div>
+      `;
+    }
+    return html`
+      <div class="groups-list">
+        ${this._groups.map(group => this._renderLightGroupCard(group))}
+      </div>
+    `;
+  }
+
+  _renderLightGroupCard(group) {
+    const lightIds = group.lightIds || [];
+    const isEditing = this._editingGroupId === group.id;
+    const isAddingLight = this._addingLightToGroup === group.id;
+    const availableLights = this._lights.filter(l => !lightIds.includes(l.entityId));
+
+    // Compute average brightness
+    const avgBrightness = lightIds.length > 0
+      ? Math.round(
+          lightIds.map(id => this.hass?.states?.[id]?.attributes?.brightness || 0)
+            .reduce((a, b) => a + b, 0) / lightIds.length / 255 * 100
+        ) || 50
+      : 50;
+
+    // Group is "on" if any light is on
+    const groupIsOn = lightIds.some(id => this.hass?.states?.[id]?.state === "on");
+
+    // Scenes belonging to this group
+    const groupScenes = this._scenes.filter(s => s.groupId === group.id);
+
+    return html`
+      <div class="group-card">
+        <div class="group-card-header">
+          ${isEditing
+            ? html`
+                <input
+                  class="edit-input"
+                  type="text"
+                  .value=${this._editingGroupName}
+                  @input=${e => { this._editingGroupName = e.target.value; }}
+                  @keydown=${e => { if (e.key === "Enter") this._saveEditGroup(group.id); }}
+                />
+                <button class="btn-primary" @click=${() => this._saveEditGroup(group.id)}>Save</button>
+                <button class="btn-secondary" @click=${this._cancelEdit}>Cancel</button>
+              `
+            : html`
+                <span class="group-name">${group.name}</span>
+                <div class="group-actions">
+                  <button
+                    class="btn-icon"
+                    title="Rename group"
+                    @click=${() => this._startEditGroup(group)}
+                  >✏️</button>
+                  <button
+                    class="btn-icon danger"
+                    title="Delete group"
+                    @click=${() => this._deleteGroup(group.id)}
+                  >🗑️</button>
+                </div>
+              `}
+        </div>
+
+        <!-- Brightness bar -->
+        <div class="group-brightness-bar">
+          <input
+            type="range"
+            min="1"
+            max="100"
+            .value=${String(avgBrightness)}
+            @change=${e => {
+              const val = Number(e.target.value);
+              if (lightIds.length > 0) {
+                this.hass.callService("light", "turn_on", {
+                  entity_id: lightIds,
+                  brightness_pct: val,
+                });
+              }
+            }}
+          />
+          <span style="font-size:0.85em;color:var(--secondary-text-color);min-width:38px;text-align:right">${avgBrightness}%</span>
+          <button
+            class="light-toggle-btn ${groupIsOn ? "on" : ""}"
+            @click=${() => {
+              if (lightIds.length > 0) {
+                this.hass.callService("light", groupIsOn ? "turn_off" : "turn_on", {
+                  entity_id: lightIds,
+                });
+              }
+            }}
+          >${groupIsOn ? "On" : "Off"}</button>
+        </div>
+
+        <!-- MY SCENES section -->
+        <div class="group-section-label">My Scenes</div>
+        ${groupScenes.length === 0
+          ? html`<div class="no-lights-msg">No scenes for this group yet.</div>`
+          : html`
+              <div class="scene-tiles">
+                ${groupScenes.map(scene => html`
+                  <div class="scene-tile">
+                    <div class="scene-tile-name" title="${scene.name}">${scene.name}</div>
+                    <div class="scene-tile-actions">
+                      <button
+                        class="btn-icon"
+                        title="Activate scene"
+                        ?disabled=${this._activatingSceneId === scene.id}
+                        @click=${() => this._activateScene(scene.id)}
+                      >▶</button>
+                      <button
+                        class="btn-icon"
+                        title="Stop scene"
+                        ?disabled=${this._stoppingSceneId === scene.id}
+                        @click=${() => this._stopScene(scene.id)}
+                      >⏹</button>
+                      <button
+                        class="btn-icon danger"
+                        title="Delete scene"
+                        @click=${() => this._deleteScene(scene.id)}
+                      >🗑️</button>
+                    </div>
+                  </div>
+                `)}
+              </div>
+            `}
+
+        <!-- LIGHTS section -->
+        <div class="group-section-label">Lights</div>
+        <div class="group-lights">
+          ${lightIds.length === 0
+            ? html`<div class="no-lights-msg">No lights in this group yet.</div>`
+            : lightIds.map(entityId => {
+                const light = this._lights.find(l => l.entityId === entityId);
+                const lightName = light?.name || entityId;
+                const lightState = this.hass?.states?.[entityId]?.state;
+                const isOn = lightState === "on";
+                return html`
+                  <div class="group-light-row">
+                    <span class="light-name">${lightName}</span>
+                    <button
+                      class="light-toggle-btn ${isOn ? "on" : ""}"
+                      @click=${() => {
+                        this.hass.callService("light", isOn ? "turn_off" : "turn_on", {
+                          entity_id: entityId,
+                        });
+                      }}
+                    >${isOn ? "On" : "Off"}</button>
+                    <button
+                      class="remove-btn"
+                      title="Remove from group"
+                      @click=${() => this._removeLightFromGroup(group.id, entityId)}
+                    >&times;</button>
+                  </div>
+                `;
+              })}
+        </div>
+
+        <!-- Add light row -->
+        ${isAddingLight
+          ? html`
+              <div class="group-footer">
+                <select
+                  class="add-light-select"
+                  @change=${e => {
+                    if (e.target.value) {
+                      this._addLightToGroup(group.id, e.target.value);
+                      e.target.value = "";
+                    }
+                  }}
+                >
+                  <option value="">Select a light to add...</option>
+                  ${availableLights.map(light => html`
+                    <option value="${light.entityId}">${light.name}</option>
+                  `)}
+                </select>
+                <button
+                  class="btn-secondary"
+                  @click=${() => { this._addingLightToGroup = null; }}
+                >Done</button>
+              </div>
+            `
+          : ""}
+
+        <!-- Footer: Add Scene button -->
+        <div class="group-footer">
+          <button
+            class="btn-primary"
+            @click=${() => {
+              this._showAddSceneToGroupId = group.id;
+              this._addSceneDialogStep = "type";
+              this._addSceneLibrarySelection = null;
+              this._sceneLibrarySearch = "";
+            }}
+          >+ Add Scene</button>
+          <button
+            class="btn-secondary"
+            ?disabled=${availableLights.length === 0}
+            @click=${() => { this._addingLightToGroup = group.id; }}
+          >+ Add Light</button>
+        </div>
+      </div>
+    `;
+  }
+
+  // ── Add Scene Dialog ─────────────────────────────────────────────────────
+
+  _renderAddSceneDialog() {
+    if (!this._showAddSceneToGroupId) return "";
+    const group = this._groups.find(g => g.id === this._showAddSceneToGroupId);
+    if (!group) return "";
+
+    return html`
+      <div class="scene-popup-backdrop" @click=${() => { this._showAddSceneToGroupId = null; }}>
+        <div class="add-scene-dialog" @click=${e => e.stopPropagation()}>
+          <div class="add-scene-dialog-header">
+            <h3 class="add-scene-dialog-title">
+              ${this._addSceneDialogStep === "type"
+                ? `Add Scene to ${group.name}`
+                : "Choose a Library Scene"}
+            </h3>
+            <button
+              class="btn-icon"
+              @click=${() => {
+                if (this._addSceneDialogStep === "library") {
+                  this._addSceneDialogStep = "type";
+                } else {
+                  this._showAddSceneToGroupId = null;
+                }
+              }}
+            >${this._addSceneDialogStep === "library" ? "← Back" : "✕"}</button>
+          </div>
+          <div class="add-scene-dialog-body">
+            ${this._addSceneDialogStep === "type"
+              ? html`
+                  <button
+                    class="add-scene-type-btn"
+                    @click=${() => {
+                      this._addSceneDialogStep = "library";
+                      this._sceneLibrarySearch = "";
+                    }}
+                  >
+                    <span>Library Scene</span>
+                    <span>→</span>
+                  </button>
+                `
+              : this._renderAddSceneLibraryStep(group)}
+          </div>
+        </div>
+      </div>
+    `;
+  }
+
+  _renderAddSceneLibraryStep(group) {
+    const filteredPresets = this._getFilteredSceneLibraryPresets();
+    return html`
+      <div style="margin-bottom:10px;">
+        <input
+          type="text"
+          placeholder="Search presets..."
+          .value=${this._sceneLibrarySearch}
+          @input=${e => { this._sceneLibrarySearch = e.target.value; }}
+          style="width:100%;box-sizing:border-box;"
+        />
+      </div>
+      <div style="display:grid; gap:10px; margin:6px 0 12px;">
+        <label style="display:flex; align-items:center; gap:10px; font-size:0.9em; color:var(--primary-text-color);">
+          Time between colors (seconds)
+          <input
+            type="number"
+            min="0.2"
+            step="0.1"
+            style="max-width:100px;"
+            .value=${String(this._sceneLibraryAnimationInterval)}
+            @change=${e => {
+              const next = Number(e.target.value);
+              this._sceneLibraryAnimationInterval = Number.isFinite(next) && next > 0 ? next : 3;
+            }}
+          />
+        </label>
+        <label style="display:flex; align-items:center; gap:10px; font-size:0.9em; color:var(--primary-text-color);">
+          <input
+            type="checkbox"
+            .checked=${this._sceneLibraryAnimationRepeat}
+            @change=${e => { this._sceneLibraryAnimationRepeat = e.target.checked; }}
+          />
+          Repeat indefinitely
+        </label>
+      </div>
+      ${filteredPresets.length === 0
+        ? html`<div style="color:var(--secondary-text-color);font-style:italic;">No presets found.</div>`
+        : html`
+            <div class="library-mini-grid">
+              ${filteredPresets.map(preset => html`
+                <button
+                  class="scene-library-card"
+                  @click=${() => {
+                    this._saveLibraryPresetAsScene(preset, 0, false, group.id);
+                    this._showAddSceneToGroupId = null;
+                  }}
+                >
+                  <div class="scene-library-thumb" style="background:${preset.gradient}"></div>
+                  <span class="scene-library-title">${preset.name}</span>
+                </button>
+              `)}
+            </div>
+          `}
+    `;
+  }
+
 
   _renderSceneLibrary() {
     const filteredPresets = this._getFilteredSceneLibraryPresets();
@@ -1938,6 +2339,8 @@ class LightManagerPanel extends LitElement {
                     this._sceneLibraryColorIndex = 0;
                     this._sceneLibraryAnimationInterval = 3;
                     this._sceneLibraryAnimationRepeat = true;
+                    this._sceneLibraryShowGroupSelect = null;
+                    this._sceneLibrarySaveAnimated = false;
                   }}>
                     <div class="scene-library-thumb" style="background:${preset.gradient}"></div>
                     <span class="scene-library-title">${preset.name}</span>
@@ -1980,11 +2383,18 @@ class LightManagerPanel extends LitElement {
       .map(group => ({
         id: group.id,
         name: group.name,
-        scenes: this._scenes.filter(scene => (scene.groupIds || []).includes(group.id)),
+        scenes: this._scenes.filter(scene => {
+          // Support both new groupId and legacy groupIds
+          if (scene.groupId) return scene.groupId === group.id;
+          return (scene.groupIds || []).includes(group.id);
+        }),
       }))
       .filter(section => section.scenes.length > 0);
 
-    const ungroupedScenes = this._scenes.filter(scene => !scene.groupIds || scene.groupIds.length === 0);
+    const ungroupedScenes = this._scenes.filter(scene => {
+      if (scene.groupId) return false;
+      return !scene.groupIds || scene.groupIds.length === 0;
+    });
     if (ungroupedScenes.length > 0) {
       groupedSections.push({
         id: "__ungrouped__",
@@ -2026,13 +2436,17 @@ class LightManagerPanel extends LitElement {
   }
 
   _renderScene(scene) {
-    const sceneGroups = scene.groupIds
+    // Support both new groupId and legacy groupIds
+    const groupIdList = scene.groupId
+      ? [scene.groupId]
+      : (scene.groupIds || []);
+    const sceneGroups = groupIdList
       .map(id => this._groups.find(g => g.id === id))
       .filter(Boolean);
 
     const isEditing = this._editingSceneId === scene.id;
     const isAddingGroup = this._addingGroupToScene === scene.id;
-    const availableGroups = this._groups.filter(g => !scene.groupIds.includes(g.id));
+    const availableGroups = this._groups.filter(g => !groupIdList.includes(g.id));
     const isActivating = this._activatingSceneId === scene.id;
     const lightStates = scene.lightStates || {};
     const lightAnimations = scene.lightAnimations || {};
@@ -2293,11 +2707,11 @@ class LightManagerPanel extends LitElement {
     if (!preset) return "";
 
     return html`
-      <div class="scene-popup-backdrop" @click=${() => { this._sceneLibraryPopupId = null; }}>
+      <div class="scene-popup-backdrop" @click=${() => { this._sceneLibraryPopupId = null; this._sceneLibraryShowGroupSelect = null; }}>
         <div class="scene-library-popup" @click=${e => { e.stopPropagation(); }}>
           <div class="scene-library-popup-image" style="background:${preset.gradient}">
             <h3 class="scene-library-popup-name">${preset.name}</h3>
-            <button class="btn-icon scene-popup-close scene-library-popup-close" title="Close" @click=${() => { this._sceneLibraryPopupId = null; }}>✕</button>
+            <button class="btn-icon scene-popup-close scene-library-popup-close" title="Close" @click=${() => { this._sceneLibraryPopupId = null; this._sceneLibraryShowGroupSelect = null; }}>✕</button>
           </div>
           <div class="scene-library-popup-body">
             <div class="scene-library-palette">
@@ -2334,12 +2748,45 @@ class LightManagerPanel extends LitElement {
                 Repeat indefinitely
               </label>
             </div>
-            <div class="scene-library-popup-actions">
-              <button @click=${() => this._saveLibraryPresetAsScene(preset, this._sceneLibraryColorIndex)}>Save static scene</button>
-              <button @click=${() => this._saveLibraryPresetAsScene(preset, this._sceneLibraryColorIndex, true)}>Save animated scene</button>
-              <button @click=${() => this._setLibraryPresetOnce(preset, this._sceneLibraryColorIndex)}>Set once</button>
-              <button @click=${() => this._stopScene(null)} ?disabled=${this._stoppingSceneId === "__all__"}>${this._stoppingSceneId === "__all__" ? "Stopping..." : "Stop scenes"}</button>
-            </div>
+
+            ${this._sceneLibraryShowGroupSelect
+              ? html`
+                  <div style="margin-bottom:10px;color:#f1f3f6;font-size:0.88em;font-weight:600;text-transform:uppercase;letter-spacing:0.08em;">
+                    ${this._sceneLibraryShowGroupSelect === "save" ? "Save to which group?" : "Set lights in which group?"}
+                  </div>
+                  <div class="group-select-row">
+                    ${this._groups.map(group => html`
+                      <button
+                        class="group-select-btn"
+                        @click=${() => {
+                          if (this._sceneLibraryShowGroupSelect === "save") {
+                            this._saveLibraryPresetAsScene(preset, this._sceneLibraryColorIndex, this._sceneLibrarySaveAnimated, group.id);
+                          } else {
+                            this._setLibraryPresetOnce(preset, this._sceneLibraryColorIndex, group.id);
+                            this._sceneLibraryShowGroupSelect = null;
+                          }
+                        }}
+                      >${group.name}</button>
+                    `)}
+                    <button
+                      class="group-select-btn"
+                      style="background:rgba(255,255,255,0.1);border-color:rgba(255,255,255,0.3);color:#f1f3f6;"
+                      @click=${() => { this._sceneLibraryShowGroupSelect = null; }}
+                    >Cancel</button>
+                  </div>
+                `
+              : html`
+                  <div class="scene-library-popup-actions">
+                    <button @click=${() => {
+                      this._sceneLibrarySaveAnimated = false;
+                      this._sceneLibraryShowGroupSelect = "save";
+                    }}>Save to My Scenes</button>
+                    <button @click=${() => {
+                      this._sceneLibraryShowGroupSelect = "setonce";
+                    }}>Set Once</button>
+                    <button @click=${() => this._stopScene(null)} ?disabled=${this._stoppingSceneId === "__all__"}>${this._stoppingSceneId === "__all__" ? "Stopping..." : "Stop All Scenes"}</button>
+                  </div>
+                `}
           </div>
         </div>
       </div>
@@ -2351,7 +2798,11 @@ class LightManagerPanel extends LitElement {
     const scene = this._scenes.find(s => s.id === this._scenePopupSceneId);
     if (!scene) return "";
 
-    const sceneGroups = scene.groupIds
+    // Support both new groupId and legacy groupIds
+    const groupIdList = scene.groupId
+      ? [scene.groupId]
+      : (scene.groupIds || []);
+    const sceneGroups = groupIdList
       .map(id => this._groups.find(g => g.id === id))
       .filter(Boolean);
     const configuredLightIds = this._getConfiguredSceneLightIds(scene);
