@@ -18,6 +18,7 @@ class LightManagerPanel extends LitElement {
     _pickerValue: { state: true },
     _newSceneName: { state: true },
     _showCreateScene: { state: true },
+    _groupScenesByLightGroup: { state: true },
     _addingGroupToScene: { state: true },
     _editingSceneId: { state: true },
     _editingSceneName: { state: true },
@@ -50,6 +51,7 @@ class LightManagerPanel extends LitElement {
     this._pickerValue = "";
     this._newSceneName = "";
     this._showCreateScene = false;
+    this._groupScenesByLightGroup = true;
     this._addingGroupToScene = null;
     this._editingSceneId = null;
     this._editingSceneName = "";
@@ -141,8 +143,59 @@ class LightManagerPanel extends LitElement {
     /* Groups/Scenes toolbar */
     .groups-toolbar {
       display: flex;
-      justify-content: flex-end;
+      justify-content: space-between;
+      align-items: center;
+      gap: 10px;
       margin-bottom: 10px;
+      flex-wrap: wrap;
+    }
+
+    .toolbar-toggle {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      color: var(--secondary-text-color);
+      font-size: 0.88em;
+      user-select: none;
+      cursor: pointer;
+    }
+
+    .scene-group-section {
+      background: var(--card-background-color);
+      border-radius: 10px;
+      box-shadow: var(--ha-card-box-shadow, 0 2px 4px rgba(0, 0, 0, 0.1));
+      overflow: hidden;
+    }
+
+    .scene-group-section summary {
+      list-style: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      padding: 10px 12px;
+      background: var(--table-header-background-color, var(--secondary-background-color));
+      border-bottom: 1px solid var(--divider-color);
+      color: var(--primary-text-color);
+      font-weight: 600;
+    }
+
+    .scene-group-section summary::-webkit-details-marker {
+      display: none;
+    }
+
+    .scene-group-content {
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+
+    .scene-group-count {
+      font-size: 0.82em;
+      color: var(--secondary-text-color);
+      font-weight: 500;
     }
 
     /* Buttons */
@@ -1871,6 +1924,14 @@ class LightManagerPanel extends LitElement {
   _renderScenes() {
     return html`
       <div class="groups-toolbar">
+        <label class="toolbar-toggle">
+          <input
+            type="checkbox"
+            .checked=${this._groupScenesByLightGroup}
+            @change=${e => { this._groupScenesByLightGroup = e.target.checked; }}
+          />
+          Group scenes by light group
+        </label>
         <button
           class="btn-primary"
           @click=${() => { this._showCreateScene = !this._showCreateScene; this._newSceneName = ""; }}
@@ -1888,10 +1949,43 @@ class LightManagerPanel extends LitElement {
           `
         : html`
             <div class="groups-list">
-              ${this._scenes.map(scene => this._renderScene(scene))}
+              ${this._groupScenesByLightGroup
+                ? this._renderScenesGroupedByLightGroup()
+                : this._scenes.map(scene => this._renderScene(scene))}
             </div>
           `}
     `;
+  }
+
+  _renderScenesGroupedByLightGroup() {
+    const groupedSections = this._groups
+      .map(group => ({
+        id: group.id,
+        name: group.name,
+        scenes: this._scenes.filter(scene => (scene.groupIds || []).includes(group.id)),
+      }))
+      .filter(section => section.scenes.length > 0);
+
+    const ungroupedScenes = this._scenes.filter(scene => !scene.groupIds || scene.groupIds.length === 0);
+    if (ungroupedScenes.length > 0) {
+      groupedSections.push({
+        id: "__ungrouped__",
+        name: "Ungrouped Scenes",
+        scenes: ungroupedScenes,
+      });
+    }
+
+    return groupedSections.map(section => html`
+      <details class="scene-group-section">
+        <summary>
+          <span>${section.name}</span>
+          <span class="scene-group-count">${section.scenes.length} scene${section.scenes.length === 1 ? "" : "s"}</span>
+        </summary>
+        <div class="scene-group-content">
+          ${section.scenes.map(scene => this._renderScene(scene))}
+        </div>
+      </details>
+    `);
   }
 
   _renderCreateSceneForm() {
