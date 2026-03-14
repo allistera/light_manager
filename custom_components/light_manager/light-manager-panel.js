@@ -1387,6 +1387,10 @@ class LightManagerPanel extends LitElement {
       brightness,
       transition: 0.6,
     })));
+
+    if (Array.isArray(preset.palette) && preset.palette.length > 0) {
+      this._sceneLibraryColorIndex = (colorIndex + 1) % preset.palette.length;
+    }
   }
 
   _saveLibraryPresetAsScene(preset, colorIndex = 0, animate = false) {
@@ -1924,14 +1928,6 @@ class LightManagerPanel extends LitElement {
   _renderScenes() {
     return html`
       <div class="groups-toolbar">
-        <label class="toolbar-toggle">
-          <input
-            type="checkbox"
-            .checked=${this._groupScenesByLightGroup}
-            @change=${e => { this._groupScenesByLightGroup = e.target.checked; }}
-          />
-          Group scenes by light group
-        </label>
         <button
           class="btn-primary"
           @click=${() => { this._showCreateScene = !this._showCreateScene; this._newSceneName = ""; }}
@@ -1949,9 +1945,7 @@ class LightManagerPanel extends LitElement {
           `
         : html`
             <div class="groups-list">
-              ${this._groupScenesByLightGroup
-                ? this._renderScenesGroupedByLightGroup()
-                : this._scenes.map(scene => this._renderScene(scene))}
+              ${this._renderScenesGroupedByLightGroup()}
             </div>
           `}
     `;
